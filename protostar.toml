@@ -1,0 +1,7 @@
+[project]
+protostar-version = "0.7.0"
+lib-path = "lib"
+
+[contracts]
+main = ["contracts/mercenary.cairo"]
+
