@@ -12,7 +12,8 @@ struct BountyType {
 }
 
 struct Bounty {
+    owner: felt,
     amount: felt,
-    delay: felt,
+    deadline: felt,
     type: BountyType,
 }
