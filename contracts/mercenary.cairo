@@ -1,5 +1,6 @@
 %lang starknet
 from starkware.cairo.common.cairo_builtins import HashBuiltin
+from starkware.cairo.common.math_cmp import is_le
 
 // Mercenary
 from contracts.structures import Bounty
@@ -10,6 +11,11 @@ from contracts.storage import (
     lords_contract,
     combat_module,
     developer_fees,
+    bounty_count_limit,
+    bounty_amount_limit,
+    bounty_deadline_limit,
+    bounties,
+    bounty_count,
 )
 
 // Openzeppelin
@@ -52,6 +58,12 @@ func issue_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_pt
 ) {
     Ownable.assert_only_owner();
     // TODO check the target realm can still have an additional bounty added to them.
+    let (count) = bounty_count.read(target_realm_id);
+    let (limit) = bounty_limit.read();
+    let is_under_limit = is_le(count, limit);
+    with_attr error_message("bounty limit of {limit} for realm {target_realm_id} reached") {
+        assert is_under_limit = 1;
+    }
     // TODO parse the bounty struct in order to check the type of bounty ($LORDS or resources),
     // the amount (and optionally the type of resource for the bounty) and the delay. Check for
     // valid delay and amount.
