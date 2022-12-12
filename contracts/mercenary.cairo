@@ -69,6 +69,9 @@ func issue_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_pt
     // valid delay and amount.
     // TODO transfer the amount from the caller to the mercenary contract
     // TODO add the bounty to the storage at current count and increment count
+    // - go over all indices
+    // - check if index < MAXIMUM_BOUNTIES_PER_REALM
+    // - check if the spot is open at this index, if so write, if not continue
     return ();
 }
 
@@ -110,7 +113,10 @@ func hire_mercenary{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_
     // );
 
     // // TODO update the reward distribution in order to distribute all rewards
-    // // reward the bounty and return the armies of the attacking realm
+    // // - go through all indices
+    // // - sum total_bounty_amount
+    // // - put value at index to 0;
+    // // reward the total_bounty_amount and return the armies of the attacking realm
     // if (result == CCombat.COMBAT_OUTCOME_ATTACKER_WINS) {
     //     IERC20.transfer(
     //         contract_address=lords_contract_address, recipient=caller, amount=Uint256(bounty, 0)
