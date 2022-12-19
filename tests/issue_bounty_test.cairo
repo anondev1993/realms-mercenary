@@ -36,8 +36,6 @@ namespace IERC1155 {
 }
 
 const MINT_AMOUNT = 100 * 10 ** 18;
-// const USER1 = 1;
-// const USER2 = 2;
 const REALM_CONTRACT = 121;
 const S_REALM_CONTRACT = 122;
 const COMBAT_MODULE = 123;
@@ -45,6 +43,7 @@ const BOUNTY_ISSUER = 124;
 const BOUNTY_AMOUNT = 5 * 10 ** 18;
 const TARGET_REALM_ID = 125;
 const BOUNTY_COUNT_LIMIT = 50;
+const BOUNTY_DEADLINE_LIMIT = 100;
 
 @external
 func __setup__{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}() {
@@ -67,6 +66,7 @@ func __setup__{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
         store(context.self_address, "lords_contract", [context.lords_contract])
         store(context.self_address, "erc1155_contract", [context.resources_contract])
         store(context.self_address, "bounty_count_limit", [ids.BOUNTY_COUNT_LIMIT])
+        store(context.self_address, "bounty_deadline_limit", [ids.BOUNTY_DEADLINE_LIMIT])
     %}
     // transfer amount to user 1 and 2
     IERC20.transfer(
@@ -264,8 +264,6 @@ func test_max_bounties_should_fail{syscall_ptr: felt*, pedersen_ptr: HashBuiltin
 
     // fill all the bounties slot for one realm
     %{
-        # set bounty_count_limit to 50
-        store(context.self_address, "bounty_count_limit", [50], [])
         for i in range(0, 50):
             store(context.self_address, "bounties", [ids.account1, ids.BOUNTY_AMOUNT, 0, ids.deadline, 1, 0, 0], [ids.TARGET_REALM_ID, i])
     %}
@@ -290,7 +288,6 @@ func test_max_bounties_should_fail{syscall_ptr: felt*, pedersen_ptr: HashBuiltin
 @external
 func test_replace_expired_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
     ) {
-    // store bounty_count_limit
     alloc_locals;
     local lords_contract;
     local self_address;
@@ -311,8 +308,6 @@ func test_replace_expired_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*,
 
     // fill all the bounties slot for one realm
     %{
-        # set bounty_count_limit to 50
-        store(context.self_address, "bounty_count_limit", [50], [])
         for i in range(0, 50):
             if i == 21:
                 store(context.self_address, "bounties", [ids.account1, ids.BOUNTY_AMOUNT, 0, 500, 1, 0, 0], [ids.TARGET_REALM_ID, i])
@@ -343,7 +338,6 @@ func test_replace_expired_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*,
 
 @external
 func test_negative_should_fail{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}() {
-    // store bounty_count_limit
     alloc_locals;
     local lords_contract;
     local self_address;
@@ -361,13 +355,6 @@ func test_negative_should_fail{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, r
     let bounty = Bounty(
         owner=account1, amount=Uint256(BOUNTY_AMOUNT, 0), deadline=deadline, type=bounty_type
     );
-
-    // fill all the bounties slot for one realm
-    %{
-        # set bounty_count_limit to 50
-        store(context.self_address, "bounty_count_limit", [50], [])
-        store(context.self_address, "bounty_deadline_limit", [100], [])
-    %}
 
     // should fail because the deadline is not far away enough in the future (50 < 100)
     %{ expect_revert(error_message="deadline not far enough in time") %}
