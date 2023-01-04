@@ -17,7 +17,7 @@ func realm_contract() -> (address: felt) {
 }
 
 @storage_var
-func stacked_realm_contract() -> (address: felt) {
+func staked_realm_contract() -> (address: felt) {
 }
 
 @storage_var
@@ -33,7 +33,7 @@ func combat_module() -> (address: felt) {
 }
 
 @storage_var
-func developer_fees() -> (fees: felt) {
+func developer_fees_percentage() -> (fees: felt) {
 }
 
 // -----------------------------------

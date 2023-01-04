@@ -14,6 +14,14 @@ from contracts.storage import supportsInterface
 from contracts.structures import Bounty, BountyType
 
 @contract_interface
+namespace IRealms {
+    func initializer(name: felt, symbol: felt, proxy_admin: felt) {
+    }
+    func set_realm_data(tokenId: Uint256, _realm_name: felt, _realm_data: felt) {
+    }
+}
+
+@contract_interface
 namespace IERC20 {
     func mint(to: felt, tokenId: Uint256) {
     }
@@ -39,7 +47,6 @@ const MINT_AMOUNT = 100 * 10 ** 18;
 const REALM_CONTRACT = 121;
 const S_REALM_CONTRACT = 122;
 const COMBAT_MODULE = 123;
-const BOUNTY_ISSUER = 124;
 const BOUNTY_AMOUNT = 5 * 10 ** 18;
 const TARGET_REALM_ID = 125;
 const BOUNTY_COUNT_LIMIT = 50;
@@ -52,6 +59,7 @@ func __setup__{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
     local resources_contract;
     local lords_contract;
     local account1;
+    local realms_contract;
     %{
         context.self_address = ids.address
         context.lords_contract = deploy_contract("lib/cairo_contracts_git/src/openzeppelin/token/erc20/presets/ERC20Mintable.cairo", [0, 0, 6, ids.MINT_AMOUNT, 0, ids.address, ids.address]).contract_address
@@ -61,13 +69,30 @@ func __setup__{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
         context.account1 = deploy_contract('./lib/argent_contracts_starknet_git/contracts/account/ArgentAccount.cairo').contract_address
         ids.account1 = context.account1
 
+        ## deploy realms nft contract
+        ids.realms_contract = deploy_contract("./lib/realms_contracts_git/contracts/settling_game/tokens/Realms_ERC721_Mintable.cairo").contract_address
+        context.realms_contract = ids.realms_contract
+
         ids.resources_contract = context.resources_contract
         ids.lords_contract = context.lords_contract
         store(context.self_address, "lords_contract", [context.lords_contract])
+        store(context.self_address, "realm_contract", [context.realms_contract])
         store(context.self_address, "erc1155_contract", [context.resources_contract])
         store(context.self_address, "bounty_count_limit", [ids.BOUNTY_COUNT_LIMIT])
         store(context.self_address, "bounty_deadline_limit", [ids.BOUNTY_DEADLINE_LIMIT])
     %}
+
+    // initialize realms contract
+    IRealms.initializer(contract_address=realms_contract, name=0, symbol=0, proxy_admin=address);
+
+    // set realm data
+    IRealms.set_realm_data(
+        contract_address=realms_contract,
+        tokenId=Uint256(TARGET_REALM_ID, 0),
+        _realm_name='test1',
+        _realm_data=40564819207303341694527483217926,
+    );
+
     // transfer amount to user 1 and 2
     IERC20.transfer(
         contract_address=lords_contract, recipient=account1, amount=Uint256(BOUNTY_AMOUNT, 0)
@@ -76,7 +101,6 @@ func __setup__{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
     // TODO do the real initializer
     IERC1155.initializer(resources_contract, 0, address);
     // mint and transfer resources to user 1 and 2
-    // TODO: mint amounts of resources to user 1 and 2
     let (local data: felt*) = alloc();
     assert data[0] = 0;
     IERC1155.mint(
@@ -108,13 +132,13 @@ func test_deploy{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr
                         context.lords_contract, 
                         ids.COMBAT_MODULE, 
                         0, 
-                        50,
+                        ids.BOUNTY_COUNT_LIMIT,
                         *lords_limit_amount, 
                         resource_len, 
                         *resources_amount_array,
                         token_ids_len,
                         *token_ids,
-                        0]).contract_address
+                        ids.BOUNTY_DEADLINE_LIMIT]).contract_address
         owner = load(context.mercenary_address, "Ownable_owner", "felt")[0]
         realms_contract = load(context.mercenary_address, "realm_contract", "felt")[0]
         resources_contract = load(context.mercenary_address, "erc1155_contract", "felt")[0]
@@ -264,7 +288,7 @@ func test_max_bounties_should_fail{syscall_ptr: felt*, pedersen_ptr: HashBuiltin
 
     // fill all the bounties slot for one realm
     %{
-        for i in range(0, 50):
+        for i in range(0, ids.BOUNTY_COUNT_LIMIT):
             store(context.self_address, "bounties", [ids.account1, ids.BOUNTY_AMOUNT, 0, ids.deadline, 1, 0, 0], [ids.TARGET_REALM_ID, i])
     %}
 
@@ -308,7 +332,7 @@ func test_replace_expired_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*,
 
     // fill all the bounties slot for one realm
     %{
-        for i in range(0, 50):
+        for i in range(0, ids.BOUNTY_COUNT_LIMIT):
             if i == 21:
                 store(context.self_address, "bounties", [ids.account1, ids.BOUNTY_AMOUNT, 0, 500, 1, 0, 0], [ids.TARGET_REALM_ID, i])
             else:
@@ -328,9 +352,14 @@ func test_replace_expired_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*,
     let (index) = issue_bounty(target_realm_id=TARGET_REALM_ID, bounty=bounty);
     %{ stop_prank_callable() %}
     %{
+        ## assert that the expired bounty at index 21 was replaced
         assert ids.index == 21, f'The index {ids.index} is not equal to 21'
         issued_bounty = load(context.self_address, "bounties", "Bounty", [ids.TARGET_REALM_ID, 21])
         assert issued_bounty[3] == ids.deadline, f'deadline of the bounty {issued_bounty[3]} not equal to {ids.deadline}'                  # deadline
+
+        ## assert that the bounty owner received back his money
+        lords_balance = load(ids.lords_contract, "ERC20_balances", "Uint256", [ids.account1])[0] 
+        assert lords_balance == ids.BOUNTY_AMOUNT, f'amount of lords in account1 should be {ids.BOUNTY_AMOUNT} but is {lords_balance}'
     %}
 
     return ();
