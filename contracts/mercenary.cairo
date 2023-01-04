@@ -20,6 +20,7 @@ from starkware.cairo.common.alloc import alloc
 
 // Mercenary
 from contracts.structures import Bounty, BountyType
+from contracts.events import bounty_issued, bounty_claimed
 from contracts.storage import (
     realm_contract,
     staked_realm_contract,
@@ -235,6 +236,10 @@ func issue_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_pt
     // - check if the spot is open at this index (nothing or deadline passed), if so write, if not continue
     let (index) = _add_bounty_to_storage(bounty, target_realm_id, count_limit, 0);
     bounty_count.write(target_realm_id, new_count);
+
+    // emit event
+    bounty_issued.emit(bounty=bounty, target_realm_id=target_realm_id, index=index);
+
     return (index=index);
 }
 
@@ -537,6 +542,16 @@ func transfer_bounties{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_che
         tempvar syscall_ptr = syscall_ptr;
         tempvar range_check_ptr = range_check_ptr;
     }
+
+    // emit event
+    bounty_claimed.emit(
+        target_realm_id=target_realm_id,
+        lords_amount=lords,
+        token_ids_len=resources_ids_len,
+        token_ids=resources_ids,
+        token_amounts_len=resources_ids_len,
+        token_amounts=resources_amounts,
+    );
     return ();
 }
 

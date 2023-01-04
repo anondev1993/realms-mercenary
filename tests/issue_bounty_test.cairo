@@ -134,11 +134,11 @@ func test_deploy{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr
                         0, 
                         ids.BOUNTY_COUNT_LIMIT,
                         *lords_limit_amount, 
+                        ids.BOUNTY_DEADLINE_LIMIT,
                         resource_len, 
                         *resources_amount_array,
                         token_ids_len,
-                        *token_ids,
-                        ids.BOUNTY_DEADLINE_LIMIT]).contract_address
+                        *token_ids]).contract_address
         owner = load(context.mercenary_address, "Ownable_owner", "felt")[0]
         realms_contract = load(context.mercenary_address, "realm_contract", "felt")[0]
         resources_contract = load(context.mercenary_address, "erc1155_contract", "felt")[0]
