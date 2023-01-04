@@ -1,7 +1,7 @@
 %lang starknet
 from starkware.cairo.common.cairo_builtins import HashBuiltin
-from starkware.cairo.common.math_cmp import is_le, is_not_zero
-from starkware.cairo.common.math import assert_le_felt, unsigned_div_rem, assert_not_zero
+from starkware.cairo.common.math_cmp import is_le
+from starkware.cairo.common.math import assert_le_felt, assert_not_zero
 from starkware.starknet.common.syscalls import (
     get_caller_address,
     get_contract_address,
@@ -9,12 +9,9 @@ from starkware.starknet.common.syscalls import (
 )
 from starkware.cairo.common.uint256 import (
     Uint256,
-    uint256_le,
     assert_uint256_le,
-    assert_uint256_eq,
     uint256_add,
     uint256_eq,
-    uint256_mul_div_mod,
     uint256_mul,
     uint256_unsigned_div_rem,
     uint256_sub,
@@ -23,6 +20,7 @@ from starkware.cairo.common.alloc import alloc
 
 // Mercenary
 from contracts.structures import Bounty, BountyType
+from contracts.events import bounty_issued, bounty_claimed
 from contracts.storage import (
     realm_contract,
     staked_realm_contract,
@@ -36,7 +34,6 @@ from contracts.storage import (
     bounty_deadline_limit,
     bounties,
     bounty_count,
-    supportsInterface,
 )
 from contracts.constants import (
     DEVELOPER_FEES_PRECISION,
@@ -62,6 +59,25 @@ from realms_contracts_git.contracts.settling_game.interfaces.IRealms import IRea
 // Mercenary Logic
 // -----------------------------------
 
+//
+// Constructor
+//
+
+// @notice Mercenary constructor
+// @param owner The contract owner
+// @param realm_contract_ The contract of Realms NFT
+// @param staked_realm_contract_ The contract of staked Realms NFT
+// @param erc1155_contract_ The address of the resources contract
+// @param lords_contract_ The address of the lords token contract
+// @param combat_module_ The address of the combat module
+// @param developer_fees_percentage_ The developer royalties
+// @param bounty_count_limit The max number of bounties on one realm at a time
+// @param bounty_amount_limit_lords_ The minimum lords amount for a bounty
+// @param bounty_deadline_limit_ The min lifetime of a bounty
+// @param amount_limit_resources_len The length of min resources amount array
+// @param amount_limit_resources The min amount for each resource
+// @param token_ids_resources_len The length of resource ids array
+// @param token_ids_resources The resource ids array
 @constructor
 func constructor{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
     owner: felt,
@@ -73,11 +89,11 @@ func constructor{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr
     developer_fees_percentage_: felt,
     bounty_count_limit: felt,
     bounty_amount_limit_lords_: Uint256,
+    bounty_deadline_limit_: felt,
     amount_limit_resources_len: felt,
     amount_limit_resources: Uint256*,
     token_ids_resources_len: felt,
     token_ids_resources: Uint256*,
-    bounty_deadline_limit_: felt,
 ) {
     Ownable.initializer(owner);
     realm_contract.write(realm_contract_);
@@ -89,7 +105,9 @@ func constructor{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr
         assert_le_felt(developer_fees_percentage_, DEVELOPER_FEES_PRECISION);
     }
     developer_fees_percentage.write(developer_fees_percentage_);
+    // TODO: add the bounty_count_limit + testing
     bounty_amount_limit_lords.write(bounty_amount_limit_lords_);
+    bounty_deadline_limit.write(bounty_deadline_limit_);
     // write 2 arrays of Uint256 in storage_var (uint256 -> uint256)
     set_bounty_amount_limit_resources(
         amount_limit_resources_len,
@@ -98,10 +116,15 @@ func constructor{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr
         token_ids_resources,
         0,
     );
-    bounty_deadline_limit.write(bounty_deadline_limit_);
     return ();
 }
 
+// @notice Sets bounty_amount_limit_resources of token_ids(Uint256) -> amounts(Uint256)
+// @param amounts_len Length of the amounts array
+// @param amounts Amount for each resource token id
+// @param token_ids_len Length of the token ids array
+// @param token_ids array of token ids
+// @param index index for recursion
 func set_bounty_amount_limit_resources{
     syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr
 }(amounts_len: felt, amounts: Uint256*, token_ids_len: felt, token_ids: Uint256*, index: felt) {
@@ -120,6 +143,7 @@ func set_bounty_amount_limit_resources{
 // @notice Issues an bounty on the designated realm
 // @param target_realm_id The target realm id
 // @param bounty The bounty to be issued
+// @return index The index of the new bounty
 @external
 func issue_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
     target_realm_id: felt, bounty: Bounty
@@ -212,10 +236,21 @@ func issue_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_pt
     // - check if the spot is open at this index (nothing or deadline passed), if so write, if not continue
     let (index) = _add_bounty_to_storage(bounty, target_realm_id, count_limit, 0);
     bounty_count.write(target_realm_id, new_count);
+
+    // emit event
+    bounty_issued.emit(bounty=bounty, target_realm_id=target_realm_id, index=index);
+
     return (index=index);
 }
 
 // TODO: have a function to remove a bounty from the storage
+
+// @notice Adds a bounty to the storage
+// @param new_bounty The new bounty
+// @param target_realm_id The target realm id
+// @param bounty_count_limit The max number of bounties on one realm at a time
+// @param index The index for recursion
+// @return index The index of the new bounty
 func _add_bounty_to_storage{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
     new_bounty: Bounty, target_realm_id: felt, bounty_count_limit: felt, index: felt
 ) -> (index: felt) {
@@ -267,11 +302,12 @@ func _add_bounty_to_storage{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, rang
 
 // @notice Claim the bounty on the target realm by performing combat on the
 // @notice enemy realm
-// @dev The attacking realm must have approved the empire contract before
-// @dev calling hire_mercenary
-// @param target_realm_id The target realm for the attack
+// @dev The attacking realm must have approved the transfer of his realm
+// @dev to this contract before calling hire_mercenary
+// @param target_realm_id The target realm id
 // @param attacking_realm_id The id of the attacking realm
 // @param attacking_army_id The id of the attacking army
+// @param defending_army_id The id of the defending army
 @external
 func claim_bounties{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
     target_realm_id: felt,
@@ -359,52 +395,13 @@ func claim_bounties{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_
     return ();
 }
 
-// // test this
-// func balance_difference{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
-//     index: felt,
-//     position: felt,
-//     balance_len: felt,
-//     old_balance: Uint256*,
-//     new_balance: Uint256*,
-//     diff_balance: Uint256*,
-//     sparse_resources_ids: Uint256*,
-//     resources_ids: Uint256*,
-// ) -> () {
-//     if (index == balance_len) {
-//         return ();
-//     }
-//     let difference = Uint256(
-//         new_balance.low - old_balance.low, new_balance.high - old_balance.high
-//     );
-//     // if not zero
-//     let (balance_equal_zero) =
-//     if (uint256_eq(difference, Uint256(0, 0)) == 0) {
-//         assert diff_balance[index] = difference;
-//         assert resources_ids[index] = sparse_resources_ids[position];
-//         balance_difference(
-//             index + 1,
-//             position + 1,
-//             balance_len,
-//             old_balance,
-//             new_balance,
-//             diff_balance,
-//             sparse_resources_ids,
-//             resources_ids,
-//         );
-//     }
-
-// balance_difference(
-//         index + 1,
-//         position,
-//         balance_len,
-//         old_balance,
-//         new_balance,
-//         diff_balance,
-//         sparse_resources_ids,
-//         resources_ids,
-//     );
-// }
-
+// @notice Calculate the difference in resource balance before
+// @notice and after combat
+// @param balance_len The length of old_balance and new_balance
+// @param old_balance The array of balances before combat
+// @param new_balance The array of balances after combat
+// @param balance_difference The array of balance differences
+// @parm index The index for recursion
 func calculate_balance_difference{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
     balance_len: felt,
     old_balance: Uint256*,
@@ -425,6 +422,12 @@ func calculate_balance_difference{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*
     return ();
 }
 
+// @notice Calculate resources balance of mercenary contract based on resources ids
+// @notice pillageable on specific target realm
+// @param target_realm_id The target realm id
+// @return len The length of the returned arrays
+// @return balance The balances of the resources ids for mercenary contract
+// @return resource_ids The resource ids pillageable on target realm
 func resources_balance{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
     target_realm_id: felt
 ) -> (len: felt, balance: Uint256*, resource_ids: Uint256*) {
@@ -462,6 +465,11 @@ func resources_balance{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_che
     return (len, balance, resources_ids);
 }
 
+// @notice Creates an array of same owners with same length as resources_len
+// @param account_address The owner to repeatedly place in array
+// @param owners The array to be filled
+// @param index Index for recursion
+// @param resources_len The final length of the filled owners array
 func populate_resources_owner_list{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
     account_address: felt, owners: felt*, index: felt, resources_len: felt
 ) -> () {
@@ -472,6 +480,8 @@ func populate_resources_owner_list{syscall_ptr: felt*, pedersen_ptr: HashBuiltin
     return populate_resources_owner_list(account_address, owners, index + 1, resources_len);
 }
 
+// @notice If attacker wins transfers the bounties to him (lords and resources)
+// @param target_realm_id The target realm id
 func transfer_bounties{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
     target_realm_id: felt
 ) -> () {
@@ -532,9 +542,27 @@ func transfer_bounties{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_che
         tempvar syscall_ptr = syscall_ptr;
         tempvar range_check_ptr = range_check_ptr;
     }
+
+    // emit event
+    bounty_claimed.emit(
+        target_realm_id=target_realm_id,
+        lords_amount=lords,
+        token_ids_len=resources_ids_len,
+        token_ids=resources_ids,
+        token_amounts_len=resources_ids_len,
+        token_amounts=resources_amounts,
+    );
     return ();
 }
 
+// @notice Populates an array of resources amounts and ids of all resources bounties
+// @notice on a target realm and erases each bounty from the storage
+// @param resources_ids The array of resources ids of all bounties
+// @param resources_amounts The array of resources amounts of all bounties
+// @param target_realm_id The target realm id
+// @param array_index The current highest index of constructed arrays
+// @param index Index used for recursion
+// @param bounty_count_limit The max number of bounties on one realm at a time
 func collect_resources{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
     resources_ids: Uint256*,
     resources_amounts: Uint256*,
@@ -581,6 +609,11 @@ func collect_resources{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_che
     );
 }
 
+// @notice Sum total lords on all bounties of a target realm
+// @param target_realm_id The target realm id
+// @param index Index used for recursion
+// @param bounty_count_limit The max number of bounties on one realm at a time
+// @return Sum total lords
 func sum_lords{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
     target_realm_id: felt, index: felt, bounty_count_limit: felt
 ) -> Uint256 {
@@ -601,9 +634,9 @@ func sum_lords{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
     }
 }
 
-//############
-// RECEIVERS #
-//############
+//
+// RECEIVERS
+//
 
 @external
 func onERC1155Received{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
