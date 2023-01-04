@@ -4,3 +4,6 @@
 [submodule "realms_contracts_git"]
 	path = lib/realms_contracts_git
 	url = https://github.com/BibliothecaForAdventurers/realms-contracts.git
+[submodule "argent_contracts_starknet_git"]
+	path = lib/argent_contracts_starknet_git
+	url = https://github.com/argentlabs/argent-contracts-starknet.git

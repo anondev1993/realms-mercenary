@@ -11,8 +11,11 @@ struct BountyType {
     resource: Uint256,
 }
 
+// bounty type 0 = LORDS
+// bounty type 1 = Resource
 struct Bounty {
-    amount: felt,
-    delay: felt,
+    owner: felt,
+    amount: Uint256,
+    deadline: felt,
     type: BountyType,
 }
