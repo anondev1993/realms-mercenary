@@ -208,6 +208,7 @@ func __setup__{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
     let (data: felt*) = alloc();
     assert data[0] = 0;
 
+    // TODO: also directly change the storage for this contract, don't use mintbatch
     IERC1155.mintBatch(
         contract_address=resources_contract,
         to=address,
@@ -273,7 +274,7 @@ func test_claim_with_bounties{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, ra
                 store(context.self_address, "bounties", [0, ids.BOUNTY_AMOUNT, 0, 1000, 0, 1, 0], [ids.TARGET_REALM_ID, i])
             if (i>=40):
                 # 10 times
-                # lords bounties
+                # resource bounties
                 store(context.self_address, "bounties", [0, ids.BOUNTY_AMOUNT, 0, 1000, 0, 2, 0], [ids.TARGET_REALM_ID, i])
 
         # verify that the bounty is correct

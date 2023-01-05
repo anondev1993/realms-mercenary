@@ -40,7 +40,7 @@ func __setup__{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
                 store(context.self_address, "bounties", [ids.ACCOUNT1, ids.BOUNTY_AMOUNT, 0, 1000, 0, 1, 0], [ids.TARGET_REALM_ID, i])
             if (i>=40):
                 # 10 times
-                # lords bounties
+                # resource bounties
                 store(context.self_address, "bounties", [ids.ACCOUNT1, ids.BOUNTY_AMOUNT, 0, 1000, 1, 0, 0], [ids.TARGET_REALM_ID, i])
     %}
     return ();

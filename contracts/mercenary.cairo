@@ -118,6 +118,60 @@ func constructor{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr
     return ();
 }
 
+@external
+func remove_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
+    index: felt, target_realm_id: felt
+) -> () {
+    alloc_locals;
+    let (caller_address) = get_caller_address();
+    let (contract_address) = get_contract_address();
+    let (erc1155_address) = erc1155_contract.read();
+    let (lords_address) = lords_contract.read();
+
+    let (bounty) = bounties.read(target_realm_id, index);
+
+    let bounty_owner = bounty.owner;
+
+    // assert that there is a bounty at that location
+    with_attr error_message("no bounty on that index") {
+        assert_not_zero(bounty_owner);
+    }
+
+    // assert that caller is the owner
+    with_attr error_message("only owner of the bounty can remove it") {
+        assert bounty_owner = caller_address;
+    }
+
+    // transfer back the funds to the owner
+    if (bounty.type.is_lords == 1) {
+        // if lords
+        IERC20.transfer(lords_address, caller_address, bounty.amount);
+        tempvar syscall_ptr = syscall_ptr;
+        tempvar range_check_ptr = range_check_ptr;
+    } else {
+        // if resources
+        let (data: felt*) = alloc();
+        assert data[0] = 0;
+        IERC1155.safeTransferFrom(
+            contract_address=erc1155_address,
+            _from=contract_address,
+            to=caller_address,
+            id=bounty.type.resource,
+            amount=bounty.amount,
+            data_len=1,
+            data=data,
+        );
+        tempvar syscall_ptr = syscall_ptr;
+        tempvar range_check_ptr = range_check_ptr;
+    }
+
+    // set the bounty to 0 in the list
+    bounties.write(
+        target_realm_id, index, Bounty(0, Uint256(0, 0), 0, BountyType(0, Uint256(0, 0)))
+    );
+    return ();
+}
+
 // @notice Sets bounty_amount_limit_resources of token_ids(Uint256) -> amounts(Uint256)
 // @param amounts_len Length of the amounts array
 // @param amounts Amount for each resource token id
