@@ -52,7 +52,6 @@ from realms_contracts_git.contracts.settling_game.interfaces.IERC1155 import IER
 from realms_contracts_git.contracts.settling_game.modules.resources.library import Resources
 from realms_contracts_git.contracts.settling_game.interfaces.IRealms import IRealms
 
-// TODO: add events
 // TODO: get_external_contract_address, get_module_address
 
 // -----------------------------------
@@ -87,7 +86,7 @@ func constructor{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr
     lords_contract_: felt,
     combat_module_: felt,
     developer_fees_percentage_: felt,
-    bounty_count_limit: felt,
+    bounty_count_limit_: felt,
     bounty_amount_limit_lords_: Uint256,
     bounty_deadline_limit_: felt,
     amount_limit_resources_len: felt,
@@ -105,7 +104,7 @@ func constructor{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr
         assert_le_felt(developer_fees_percentage_, DEVELOPER_FEES_PRECISION);
     }
     developer_fees_percentage.write(developer_fees_percentage_);
-    // TODO: add the bounty_count_limit + testing
+    bounty_count_limit.write(bounty_count_limit_);
     bounty_amount_limit_lords.write(bounty_amount_limit_lords_);
     bounty_deadline_limit.write(bounty_deadline_limit_);
     // write 2 arrays of Uint256 in storage_var (uint256 -> uint256)

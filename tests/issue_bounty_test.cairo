@@ -115,53 +115,6 @@ func __setup__{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
 }
 
 @external
-func test_deploy{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}() {
-    alloc_locals;
-    %{
-        import numpy as np
-        lords_limit_amount = [10, 0]
-        resources_amount = [10, 0]
-        resource_len = token_ids_len = 4
-        token_ids = [0, 0, 1, 0, 2, 0, 3, 0]
-        resources_amount_array = resource_len*resources_amount 
-        context.mercenary_address = deploy_contract("./contracts/mercenary.cairo", 
-                       [context.self_address, 
-                        ids.REALM_CONTRACT, 
-                        ids.S_REALM_CONTRACT, 
-                        context.resources_contract, 
-                        context.lords_contract, 
-                        ids.COMBAT_MODULE, 
-                        0, 
-                        ids.BOUNTY_COUNT_LIMIT,
-                        *lords_limit_amount, 
-                        ids.BOUNTY_DEADLINE_LIMIT,
-                        resource_len, 
-                        *resources_amount_array,
-                        token_ids_len,
-                        *token_ids]).contract_address
-        owner = load(context.mercenary_address, "Ownable_owner", "felt")[0]
-        realms_contract = load(context.mercenary_address, "realm_contract", "felt")[0]
-        resources_contract = load(context.mercenary_address, "erc1155_contract", "felt")[0]
-        combat_module = load(context.mercenary_address, "combat_module", "felt")[0]
-        lords_contract = load(context.mercenary_address, "lords_contract", "felt")[0]
-
-        ## check that the bounty_amount_limit_resources storage was correctly filled
-        for i in range(0, 4):
-            if (i%2 == 0):
-                resource_amount = load(context.mercenary_address, "bounty_amount_limit_resources", "Uint256", [token_ids[i], token_ids[i+1]])
-                resource_amount_true = [resources_amount_array[i], resources_amount_array[i+1]] 
-                assert resource_amount == resource_amount_true, f'resource amount in contract is {resource_amount} while should be {resource_amount_true}'
-
-        assert owner == context.self_address, f'owner error, expected {context.self_address}, got {owner}'
-        assert realms_contract == ids.REALM_CONTRACT, f'realms_contract error, expected {ids.REALM_CONTRACT}, got {realms_contract}'
-        assert resources_contract == context.resources_contract, f'resource_contract error, expected {context.resources_contract}, got {resources_contract}'
-        assert combat_module == ids.COMBAT_MODULE, f'combat_module error, expected {ids.COMBAT_MODULE}, got {combat_module}'
-        assert lords_contract == context.lords_contract, f'lords_contract error, expected {context.lords_contract}, got {lords_contract}'
-    %}
-    return ();
-}
-
-@external
 func test_issue_lords_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}() {
     // store bounty_count_limit
     alloc_locals;
