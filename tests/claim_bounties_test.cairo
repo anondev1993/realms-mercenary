@@ -21,13 +21,9 @@ from realms_contracts_git.contracts.settling_game.utils.game_structs import Real
 namespace IRealms {
     func initializer(name: felt, symbol: felt, proxy_admin: felt) {
     }
-    func approve(approved: felt, tokenId: Uint256) {
-    }
     func mint(to: felt, tokenId: Uint256) {
     }
     func set_realm_data(tokenId: Uint256, _realm_name: felt, _realm_data: felt) {
-    }
-    func fetch_realm_data(realm_id: Uint256) -> (realm_stats: RealmData) {
     }
 }
 
@@ -38,57 +34,6 @@ namespace ISRealms {
     func approve(to: felt, tokenId: Uint256) {
     }
     func mint(to: felt, tokenId: Uint256) {
-    }
-}
-
-@contract_interface
-namespace IERC20 {
-    func mint(to: felt, tokenId: Uint256) {
-    }
-    func ownerOf(tokenId: Uint256) -> (owner: felt) {
-    }
-    func approve(spender: felt, amount: Uint256) -> (success: felt) {
-    }
-    func transfer(recipient: felt, amount: Uint256) -> (success: felt) {
-    }
-}
-
-@contract_interface
-namespace IERC1155 {
-    func initializer(uri: felt, proxy_admin: felt) {
-    }
-    func mint(to: felt, id: Uint256, amount: Uint256, data_len: felt, data: felt*) -> () {
-    }
-    func mintBatch(
-        to: felt,
-        ids_len: felt,
-        ids: Uint256*,
-        amounts_len: felt,
-        amounts: Uint256*,
-        data_len: felt,
-        data: felt*,
-    ) -> () {
-    }
-    func setApprovalForAll(operator: felt, approved: felt) {
-    }
-    func safeBatchTransferFrom(
-        _from: felt,
-        to: felt,
-        ids_len: felt,
-        ids: Uint256*,
-        amounts_len: felt,
-        amounts: Uint256*,
-        data_len: felt,
-        data: felt*,
-    ) {
-    }
-    func balanceOf(account: felt, id: Uint256) -> (balance: Uint256) {
-    }
-}
-
-@contract_interface
-namespace IArgentAccount {
-    func initialize(signer: felt, guardian: felt) {
     }
 }
 
@@ -184,7 +129,7 @@ func __setup__{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
     //
     // DEFENDER
     //
-    // mint realm for account 2 (defeding) and set data
+    // mint realm for account 2 (defending) and set data
     IRealms.initializer(realms_contract, 0, 0, address);
     // mint realms
     IRealms.mint(realms_contract, account2, Uint256(TARGET_REALM_ID, 0));
@@ -193,37 +138,12 @@ func __setup__{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
         realms_contract, Uint256(TARGET_REALM_ID, 0), 0, 40564819207303341694527483217926
     );
 
-    // erc1155 initializer
-    IERC1155.initializer(resources_contract, 0, address);
-
-    // mint and transfer resources to mercenary contract
-    let (resources_ids: Uint256*) = alloc();
-    assert resources_ids[0] = Uint256(1, 0);
-    assert resources_ids[1] = Uint256(2, 0);
-    assert resources_ids[2] = Uint256(3, 0);
-
-    let (resources_amounts: Uint256*) = alloc();
-    assert resources_amounts[0] = Uint256(100 * BOUNTY_AMOUNT, 0);
-    assert resources_amounts[1] = Uint256(100 * BOUNTY_AMOUNT, 0);
-    assert resources_amounts[2] = Uint256(100 * BOUNTY_AMOUNT, 0);
-
-    let (data: felt*) = alloc();
-    assert data[0] = 0;
-
-    // TODO: also directly change the storage for this contract, don't use mintbatch
-    IERC1155.mintBatch(
-        contract_address=resources_contract,
-        to=address,
-        ids_len=3,
-        ids=resources_ids,
-        amounts_len=3,
-        amounts=resources_amounts,
-        data_len=1,
-        data=data,
-    );
-
     // directly change in the storage the amounts
     %{
+        store(context.resources_contract, "ERC1155_balances", [100*ids.BOUNTY_AMOUNT], [1, 0, context.self_address])
+        store(context.resources_contract, "ERC1155_balances", [100*ids.BOUNTY_AMOUNT], [2, 0, context.self_address])
+        store(context.resources_contract, "ERC1155_balances", [100*ids.BOUNTY_AMOUNT], [3, 0, context.self_address])
+
         store(context.resources_contract, "ERC1155_balances", [ids.BOUNTY_AMOUNT], [1, 0, context.combat_contract])
         store(context.resources_contract, "ERC1155_balances", [ids.BOUNTY_AMOUNT], [2, 0, context.combat_contract])
         store(context.resources_contract, "ERC1155_balances", [ids.BOUNTY_AMOUNT], [3, 0, context.combat_contract])
