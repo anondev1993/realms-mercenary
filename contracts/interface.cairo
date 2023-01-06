@@ -38,4 +38,24 @@ namespace IMercenary {
 
     func view_bounty_count(target_realm_id: felt) -> (bounty_count: felt) {
     }
+
+    //
+    // Setters
+    //
+    func set_developer_fees_percentage(developer_fees_percentage_: felt) -> () {
+    }
+
+    func set_bounty_count_limit(bounty_count_limit_: felt) -> () {
+    }
+
+    func set_bounty_amount_limit_lords(bounty_amount_limit_lords_: Uint256) -> () {
+    }
+
+    func set_bounty_amount_limit_resources(
+        resources: Uint256, bounty_amount_limit_resources_: Uint256
+    ) -> () {
+    }
+
+    func set_bounty_deadline_limit(bounty_deadline_limit_: felt) -> () {
+    }
 }

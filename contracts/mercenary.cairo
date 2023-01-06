@@ -37,6 +37,15 @@ from contracts.getters import (
     view_bounty,
     view_bounty_count,
 )
+
+from contracts.setters import (
+    set_developer_fees_percentage,
+    set_bounty_count_limit,
+    set_bounty_amount_limit_lords,
+    set_bounty_amount_limit_resources,
+    set_bounty_deadline_limit,
+)
+
 from contracts.constants import (
     DEVELOPER_FEES_PRECISION,
     ON_ERC1155_RECEIVED_SELECTOR,

@@ -61,9 +61,14 @@ func __setup__{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
     local account1;
     local realms_contract;
     %{
+        ## deploy lords and resources contract
         context.self_address = ids.address
-        context.lords_contract = deploy_contract("lib/cairo_contracts_git/src/openzeppelin/token/erc20/presets/ERC20Mintable.cairo", [0, 0, 6, ids.MINT_AMOUNT, 0, ids.address, ids.address]).contract_address
+        context.lords_contract = deploy_contract("lib/cairo_contracts_git/src/openzeppelin/token/erc20/presets/ERC20Mintable.cairo",
+         [0, 0, 6, ids.MINT_AMOUNT, 0, ids.address, ids.address]).contract_address
         context.resources_contract = deploy_contract("lib/realms_contracts_git/contracts/token/ERC1155_Mintable_Burnable.cairo").contract_address
+        ## store in local to use in cairo
+        ids.resources_contract = context.resources_contract
+        ids.lords_contract = context.lords_contract
 
         ## deploy user accounts
         context.account1 = deploy_contract('./lib/argent_contracts_starknet_git/contracts/account/ArgentAccount.cairo').contract_address
@@ -73,8 +78,7 @@ func __setup__{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
         ids.realms_contract = deploy_contract("./lib/realms_contracts_git/contracts/settling_game/tokens/Realms_ERC721_Mintable.cairo").contract_address
         context.realms_contract = ids.realms_contract
 
-        ids.resources_contract = context.resources_contract
-        ids.lords_contract = context.lords_contract
+        ## set local storage vars
         store(context.self_address, "lords_contract", [context.lords_contract])
         store(context.self_address, "realm_contract", [context.realms_contract])
         store(context.self_address, "erc1155_contract", [context.resources_contract])
@@ -100,7 +104,7 @@ func __setup__{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
 
     // TODO do the real initializer
     IERC1155.initializer(resources_contract, 0, address);
-    // mint and transfer resources to user 1 and 2
+    // mint and transfer resources to user 1
     let (local data: felt*) = alloc();
     assert data[0] = 0;
     IERC1155.mint(
@@ -127,7 +131,7 @@ func test_issue_lords_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, ran
         ids.account1 = context.account1
     %}
 
-    // CREATE BOUNTY
+    // create bounty with lords
     let bounty_type = BountyType(is_lords=1, resource=Uint256(0, 0));
     let (ts) = get_block_timestamp();
     local deadline = ts + 1000;
@@ -135,25 +139,27 @@ func test_issue_lords_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, ran
         owner=account1, amount=Uint256(BOUNTY_AMOUNT, 0), deadline=deadline, type=bounty_type
     );
 
-    %{ stop_prank_callable = start_prank(ids.account1, target_contract_address=context.lords_contract) %}
     // give allowance of amount from this user to this contract
+    %{
+        stop_prank_callable = start_prank(ids.account1, target_contract_address=context.lords_contract)
+        ## verify allowance from event
+        expect_events({"name": "Approval", "data": [ids.account1, context.self_address, ids.BOUNTY_AMOUNT, 0], "from_address": context.lords_contract})
+    %}
     let (success) = IERC20.approve(
         contract_address=lords_contract, spender=self_address, amount=Uint256(BOUNTY_AMOUNT, 0)
     );
-    %{ expect_events({"name": "Approval", "data": [ids.account1, context.self_address, ids.BOUNTY_AMOUNT, 0], "from_address": context.lords_contract}) %}
-
     %{
+        ## verify allowance from contract storage
         allowance = load(context.lords_contract, "ERC20_allowances", "Uint256", [ids.account1, context.self_address])
         assert allowance == [ids.BOUNTY_AMOUNT, 0], f'allowance not equal to ${allowance} in the contract but should be ${[ids.BOUNTY_AMOUNT, 0]}'
     %}
     %{ stop_prank_callable() %}
 
+    // account1 issues a new bounty
     %{ stop_prank_callable = start_prank(ids.account1, target_contract_address=context.self_address) %}
-
     let (index) = issue_bounty(target_realm_id=TARGET_REALM_ID, bounty=bounty);
 
-    %{ stop_prank_callable() %}
-
+    // verify the bounty values in the storage
     %{
         issued_bounty = load(context.self_address, "bounties", "Bounty", [ids.TARGET_REALM_ID, ids.index])                      
         assert issued_bounty[0] == ids.account1, f'owner of the bounty {issued_bounty[0]} not equal to {ids.account1}'                     # owner
@@ -182,27 +188,26 @@ func test_issue_resources_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*,
         ids.account1 = context.account1
     %}
 
+    // create bounty with resources
     let bounty_type = BountyType(is_lords=0, resource=Uint256(1, 0));
     let (ts) = get_block_timestamp();
     local deadline = ts + 1000;
     let bounty = Bounty(
         owner=account1, amount=Uint256(BOUNTY_AMOUNT, 0), deadline=deadline, type=bounty_type
     );
-    %{ stop_prank_callable = start_prank(ids.account1, target_contract_address=context.resources_contract) %}
 
     // give allowance of amount from this user to this contract
+    %{ stop_prank_callable = start_prank(ids.account1, target_contract_address=context.resources_contract) %}
     IERC1155.setApprovalForAll(
         contract_address=resources_contract, operator=self_address, approved=1
     );
-
     %{ stop_prank_callable() %}
 
+    // issue new bounty
     %{ stop_prank_callable = start_prank(ids.account1, target_contract_address=context.self_address) %}
-
     let (index) = issue_bounty(target_realm_id=TARGET_REALM_ID, bounty=bounty);
 
-    %{ stop_prank_callable() %}
-
+    // verify the bounty values in the storage
     %{
         issued_bounty = load(context.self_address, "bounties", "Bounty", [ids.TARGET_REALM_ID, ids.index])                      
         assert issued_bounty[0] == ids.account1, f'owner of the bounty {issued_bounty[0]} not equal to {ids.account1}'                     # owner
@@ -220,7 +225,6 @@ func test_issue_resources_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*,
 @external
 func test_max_bounties_should_fail{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
     ) {
-    // store bounty_count_limit
     alloc_locals;
     local lords_contract;
     local self_address;
@@ -231,7 +235,7 @@ func test_max_bounties_should_fail{syscall_ptr: felt*, pedersen_ptr: HashBuiltin
         ids.account1 = context.account1
     %}
 
-    // CREATE BOUNTY
+    // create lords bounty
     let bounty_type = BountyType(is_lords=1, resource=Uint256(0, 0));
     let (ts) = get_block_timestamp();
     local deadline = ts + 1000;
@@ -245,19 +249,17 @@ func test_max_bounties_should_fail{syscall_ptr: felt*, pedersen_ptr: HashBuiltin
             store(context.self_address, "bounties", [ids.account1, ids.BOUNTY_AMOUNT, 0, ids.deadline, 1, 0, 0], [ids.TARGET_REALM_ID, i])
     %}
 
-    // TODO: is it supposed to be a certain message ?
-    %{ expect_revert(error_message="maximum number of bounties reached") %}
-
-    %{ stop_prank_callable = start_prank(ids.account1, target_contract_address=context.lords_contract) %}
     // give allowance of amount from this user to this contract
+    %{ stop_prank_callable = start_prank(ids.account1, target_contract_address=context.lords_contract) %}
     let (success) = IERC20.approve(
         contract_address=lords_contract, spender=self_address, amount=Uint256(BOUNTY_AMOUNT, 0)
     );
     %{ stop_prank_callable() %}
 
+    // expect the tx to revert when no more slots
+    %{ expect_revert(error_message="maximum number of bounties reached") %}
     %{ stop_prank_callable = start_prank(ids.account1, target_contract_address=context.self_address) %}
     let (index) = issue_bounty(target_realm_id=TARGET_REALM_ID, bounty=bounty);
-    %{ stop_prank_callable() %}
 
     return ();
 }
@@ -275,7 +277,7 @@ func test_replace_expired_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*,
         ids.account1 = context.account1
     %}
 
-    // CREATE BOUNTY
+    // create new lords bounty
     let bounty_type = BountyType(is_lords=1, resource=Uint256(0, 0));
     let (ts) = get_block_timestamp();
     local deadline = ts + 1500;
@@ -292,15 +294,17 @@ func test_replace_expired_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*,
                 store(context.self_address, "bounties", [ids.account1, ids.BOUNTY_AMOUNT, 0, 1000, 1, 0, 0], [ids.TARGET_REALM_ID, i])
     %}
 
+    // jump forward in time so that some bounties are no more valid
     %{ stop_warp = roll(501) %}
 
-    %{ stop_prank_callable = start_prank(ids.account1, target_contract_address=context.lords_contract) %}
     // give allowance of amount from this user to this contract
+    %{ stop_prank_callable = start_prank(ids.account1, target_contract_address=context.lords_contract) %}
     let (success) = IERC20.approve(
         contract_address=lords_contract, spender=self_address, amount=Uint256(BOUNTY_AMOUNT, 0)
     );
     %{ stop_prank_callable() %}
 
+    // issue new bounty and check that the bounty took the slot of an expired bounty
     %{ stop_prank_callable = start_prank(ids.account1, target_contract_address=context.self_address) %}
     let (index) = issue_bounty(target_realm_id=TARGET_REALM_ID, bounty=bounty);
     %{ stop_prank_callable() %}
@@ -319,7 +323,9 @@ func test_replace_expired_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*,
 }
 
 @external
-func test_negative_should_fail{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}() {
+func test_not_big_enough_delay_should_fail{
+    syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr
+}() {
     alloc_locals;
     local lords_contract;
     local self_address;
@@ -330,7 +336,7 @@ func test_negative_should_fail{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, r
         ids.account1 = context.account1
     %}
 
-    // CREATE BOUNTY
+    // create lords bounty
     let bounty_type = BountyType(is_lords=1, resource=Uint256(0, 0));
     let (ts) = get_block_timestamp();
     local deadline = ts + 50;
@@ -338,18 +344,17 @@ func test_negative_should_fail{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, r
         owner=account1, amount=Uint256(BOUNTY_AMOUNT, 0), deadline=deadline, type=bounty_type
     );
 
-    // should fail because the deadline is not far away enough in the future (50 < 100)
-    %{ expect_revert(error_message="deadline not far enough in time") %}
-    %{ stop_prank_callable = start_prank(ids.account1, target_contract_address=context.lords_contract) %}
     // give allowance of amount from this user to this contract
+    %{ stop_prank_callable = start_prank(ids.account1, target_contract_address=context.lords_contract) %}
     let (success) = IERC20.approve(
         contract_address=lords_contract, spender=self_address, amount=Uint256(BOUNTY_AMOUNT, 0)
     );
     %{ stop_prank_callable() %}
 
+    // should fail because the deadline is not far away enough in the future (50 < 100)
+    %{ expect_revert(error_message="deadline not far enough in time") %}
     %{ stop_prank_callable = start_prank(ids.account1, target_contract_address=context.self_address) %}
     let (index) = issue_bounty(target_realm_id=TARGET_REALM_ID, bounty=bounty);
-    %{ stop_prank_callable() %}
 
     return ();
 }

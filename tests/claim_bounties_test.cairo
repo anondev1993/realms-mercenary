@@ -115,10 +115,18 @@ func __setup__{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
 
     %{
         context.self_address = ids.address
+
         ## deploy lords contract
-        context.lords_contract = deploy_contract("lib/cairo_contracts_git/src/openzeppelin/token/erc20/presets/ERC20Mintable.cairo", [0, 0, 6, ids.MINT_AMOUNT, 0, ids.address, ids.address]).contract_address
+        context.lords_contract = deploy_contract("lib/cairo_contracts_git/src/openzeppelin/token/erc20/presets/ERC20Mintable.cairo",
+         [0, 0, 6, ids.MINT_AMOUNT, 0, ids.address, ids.address]).contract_address
+        ids.lords_contract = context.lords_contract
+        ## verify that the mint amount went to current contract
+        lords_amount = load(ids.lords_contract, "ERC20_balances", "Uint256", [context.self_address])
+        assert lords_amount[0] == ids.MINT_AMOUNT, f'lords amount in contract should be {100*10**18} but is {lords_amount}'
+
         ## deploy resources contract
         context.resources_contract = deploy_contract("lib/realms_contracts_git/contracts/token/ERC1155_Mintable_Burnable.cairo").contract_address
+        ids.resources_contract = context.resources_contract
 
         ## deploy user accounts
         ## TODO: warning from __validate__deploy
@@ -144,8 +152,7 @@ func __setup__{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
         context.mc_contract = ids.mc_contract
 
 
-        ids.resources_contract = context.resources_contract
-        ids.lords_contract = context.lords_contract
+        ## set local storage vars
         store(context.self_address, "lords_contract", [context.lords_contract])
         store(context.self_address, "erc1155_contract", [context.resources_contract])
         store(context.self_address, "realm_contract", [context.realms_contract])
@@ -162,7 +169,9 @@ func __setup__{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
         store(context.mc_contract, "can_write_to", [1], [1, 2])
     %}
 
-    // //// ATTACKER /////
+    //
+    // ATTACKER
+    //
     // mint staked realm for account 1 (attacking) and approve to mercenary contract
     ISRealms.initializer(s_realms_contract, 0, 0, address, mc_contract);
     // mint realms
@@ -172,7 +181,9 @@ func __setup__{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
     ISRealms.approve(s_realms_contract, address, Uint256(ATTACKING_REALM_ID, 0));
     %{ stop_prank_callable() %}
 
-    // //// DEFENDER /////
+    //
+    // DEFENDER
+    //
     // mint realm for account 2 (defeding) and set data
     IRealms.initializer(realms_contract, 0, 0, address);
     // mint realms
@@ -182,16 +193,10 @@ func __setup__{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
         realms_contract, Uint256(TARGET_REALM_ID, 0), 0, 40564819207303341694527483217926
     );
 
-    // initializer
+    // erc1155 initializer
     IERC1155.initializer(resources_contract, 0, address);
 
-    %{
-        lords_amount = load(ids.lords_contract, "ERC20_balances", "Uint256", [context.self_address])
-        assert lords_amount[0] == 100*10**18, f'lords amount in contract should be {100*10**18} but is {lords_amount}'
-    %}
-
     // mint and transfer resources to mercenary contract
-
     let (resources_ids: Uint256*) = alloc();
     assert resources_ids[0] = Uint256(1, 0);
     assert resources_ids[1] = Uint256(2, 0);
