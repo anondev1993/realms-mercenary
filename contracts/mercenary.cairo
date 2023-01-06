@@ -28,6 +28,15 @@ from contracts.storage import (
     bounties,
     bounty_count,
 )
+from contracts.getters import (
+    view_developer_fees_percentage,
+    view_bounty_count_limit,
+    view_bounty_amount_limit_lords,
+    view_bounty_amount_limit_resources,
+    view_bounty_deadline_limit,
+    view_bounty,
+    view_bounty_count,
+)
 from contracts.constants import (
     DEVELOPER_FEES_PRECISION,
     ON_ERC1155_RECEIVED_SELECTOR,
