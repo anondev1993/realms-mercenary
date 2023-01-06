@@ -8,7 +8,8 @@ from starkware.starknet.common.syscalls import (
 )
 from starkware.cairo.common.alloc import alloc
 
-from contracts.mercenary import issue_bounty, sum_lords, collect_resources, onERC1155Received
+from contracts.mercenary import issue_bounty, onERC1155Received
+from contracts.library import MercenaryLib
 from contracts.storage import supportsInterface, bounties
 from contracts.structures import Bounty, BountyType
 
@@ -54,7 +55,7 @@ func test_sum_lords{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_
         assert_uint256_eq(bounty.amount, Uint256(BOUNTY_AMOUNT, 0));
     }
 
-    let sum = sum_lords(TARGET_REALM_ID, 0, 50);
+    let sum = MercenaryLib.sum_lords(TARGET_REALM_ID, 0, 50);
 
     // verify the total amount
     %{ assert ids.sum.low == 20 * ids.BOUNTY_AMOUNT, f'sum of lords bounty amount is equal to {ids.sum.low} but should be {20*ids.BOUNTY_AMOUNT}' %}
@@ -78,7 +79,9 @@ func test_sum_resources{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_ch
         assert_uint256_eq(bounty.amount, Uint256(BOUNTY_AMOUNT, 0));
     }
 
-    let ids_len = collect_resources(resources_ids, resources_amounts, TARGET_REALM_ID, 0, 0, 50);
+    let ids_len = MercenaryLib.collect_resources(
+        resources_ids, resources_amounts, TARGET_REALM_ID, 0, 0, 50
+    );
 
     with_attr error_message("wrong ids_len") {
         assert ids_len = 30;

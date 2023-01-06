@@ -9,12 +9,9 @@ from starkware.starknet.common.syscalls import (
 )
 from starkware.cairo.common.alloc import alloc
 
-from contracts.mercenary import (
-    issue_bounty,
-    onERC1155BatchReceived,
-    claim_bounties,
-    resources_balance,
-)
+from contracts.library import MercenaryLib
+
+from contracts.mercenary import issue_bounty, onERC1155BatchReceived, claim_bounties
 from contracts.storage import supportsInterface
 from contracts.structures import Bounty, BountyType
 
