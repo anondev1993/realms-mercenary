@@ -1,4 +1,5 @@
 %lang starknet
+// Starkware
 from starkware.cairo.common.cairo_builtins import HashBuiltin
 from starkware.cairo.common.math_cmp import is_le
 from starkware.cairo.common.math import assert_le_felt, assert_not_zero
@@ -62,6 +63,11 @@ from realms_contracts_git.contracts.settling_game.utils.constants import CCombat
 from realms_contracts_git.contracts.settling_game.interfaces.IERC1155 import IERC1155
 from realms_contracts_git.contracts.settling_game.modules.resources.library import Resources
 from realms_contracts_git.contracts.settling_game.interfaces.IRealms import IRealms
+from realms_contracts_git.contracts.settling_game.library.library_module import Module
+from realms_contracts_git.contracts.settling_game.utils.game_structs import (
+    ModuleIds,
+    ExternalContractIds,
+)
 
 // TODO: get_external_contract_address, get_module_address
 
@@ -88,14 +94,17 @@ from realms_contracts_git.contracts.settling_game.interfaces.IRealms import IRea
 // @param amount_limit_resources The min amount for each resource
 // @param token_ids_resources_len The length of resource ids array
 // @param token_ids_resources The resource ids array
+
+// TODO: remove that at the end
+// realm_contract_: felt,
+// staked_realm_contract_: felt,
+// erc1155_contract_: felt,
+// lords_contract_: felt,
+// combat_module_: felt,
 @constructor
 func constructor{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
     owner: felt,
-    realm_contract_: felt,
-    staked_realm_contract_: felt,
-    erc1155_contract_: felt,
-    lords_contract_: felt,
-    combat_module_: felt,
+    address_of_controller: felt,
     developer_fees_percentage_: felt,
     bounty_count_limit_: felt,
     bounty_amount_limit_lords_: Uint256,
@@ -105,12 +114,16 @@ func constructor{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr
     token_ids_resources_len: felt,
     token_ids_resources: Uint256*,
 ) {
+    // init owner
     Ownable.initializer(owner);
-    realm_contract.write(realm_contract_);
-    staked_realm_contract.write(staked_realm_contract_);
-    erc1155_contract.write(erc1155_contract_);
-    lords_contract.write(lords_contract_);
-    combat_module.write(combat_module_);
+    // init module controller
+    Module.initializer(address_of_controller);
+
+    // realm_contract.write(realm_contract_);
+    // staked_realm_contract.write(staked_realm_contract_);
+    // erc1155_contract.write(erc1155_contract_);
+    // lords_contract.write(lords_contract_);
+    // combat_module.write(combat_module_);
     with_attr error_message("developer fee percentage higher than 100%") {
         assert_le_felt(developer_fees_percentage_, DEVELOPER_FEES_PRECISION);
     }
@@ -136,8 +149,9 @@ func remove_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_p
     alloc_locals;
     let (caller_address) = get_caller_address();
     let (contract_address) = get_contract_address();
-    let (erc1155_address) = erc1155_contract.read();
-    let (lords_address) = lords_contract.read();
+
+    let (erc1155_address) = Module.get_external_contract_address(ExternalContractIds.Resources);
+    let (lords_address) = Module.get_external_contract_address(ExternalContractIds.Lords);
 
     let (bounty) = bounties.read(target_realm_id, index);
 
@@ -198,7 +212,7 @@ func issue_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_pt
         assert caller_address = bounty.owner;
     }
 
-    let (realm_contract_address) = realm_contract.read();
+    let (realm_contract_address) = Module.get_external_contract_address(ExternalContractIds.Realms);
     // check that this realm exists
     let (realm_name) = IRealms.get_realm_name(realm_contract_address, Uint256(target_realm_id, 0));
     with_attr error_message("This realm does not exist") {
@@ -228,8 +242,9 @@ func issue_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_pt
         assert is_le(deadline_limit, time) = 1;
     }
 
-    let (lords_address) = lords_contract.read();
-    let (erc1155_address) = erc1155_contract.read();
+    let (lords_address) = Module.get_external_contract_address(ExternalContractIds.Lords);
+
+    let (erc1155_address) = Module.get_external_contract_address(ExternalContractIds.Resources);
     let (contract_address) = get_contract_address();
 
     // transfer the amount from the caller to the mercenary contract
@@ -313,7 +328,9 @@ func claim_bounties{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_
     // DISCUSS: should you transfer from the staked realm or from the normal realm contract ?
     // DISCUSS: in modules (buildings, combat, ...) needs to be staked, will that stay ?
     // temporarily transfer the command of the armies of the mercenary to the mercenary contract
-    let (s_realm_contract_address) = staked_realm_contract.read();
+    let (s_realm_contract_address) = Module.get_external_contract_address(
+        ExternalContractIds.S_Realms
+    );
     IERC721.transferFrom(
         contract_address=s_realm_contract_address,
         from_=caller_address,
@@ -327,7 +344,7 @@ func claim_bounties{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_
     );
 
     // attack the target of the bounty
-    let (combat_module_) = combat_module.read();
+    let (combat_module_) = Module.get_module_address(ModuleIds.L06_Combat);
     let (result) = ICombat.initiate_combat(
         contract_address=combat_module_,
         attacking_army_id=attacking_army_id,
@@ -352,7 +369,7 @@ func claim_bounties{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_
             old_balance_len, old_balance, new_balance, balance_difference, 0
         );
         // send back the difference between them (what has been won from the battle)
-        let (erc1155_address) = erc1155_contract.read();
+        let (erc1155_address) = Module.get_external_contract_address(ExternalContractIds.Resources);
         IERC1155.safeBatchTransferFrom(
             contract_address=erc1155_address,
             _from=contract_address,

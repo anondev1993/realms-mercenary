@@ -16,6 +16,10 @@ from contracts.storage import supportsInterface
 from contracts.structures import Bounty, BountyType
 
 from realms_contracts_git.contracts.settling_game.utils.game_structs import RealmData
+from realms_contracts_git.contracts.settling_game.utils.game_structs import (
+    ModuleIds,
+    ExternalContractIds,
+)
 
 @contract_interface
 namespace IRealms {
@@ -92,9 +96,18 @@ func __setup__{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
         ids.s_realms_contract = deploy_contract("./lib/realms_contracts_git/contracts/settling_game/tokens/S_Realms_ERC721_Mintable.cairo").contract_address
         context.s_realms_contract = ids.s_realms_contract
 
-        ## deploy module controller to use the staked realm mint
-        ids.mc_contract = deploy_contract("./lib/realms_contracts_git/contracts/settling_game/ModuleController.cairo").contract_address
-        context.mc_contract = ids.mc_contract
+        ## deploy modules controller contract and setup external contract and modules ids
+        context.mc_contract = deploy_contract("./lib/realms_contracts_git/contracts/settling_game/ModuleController.cairo").contract_address
+        ids.mc_contract = context.mc_contract
+        # store in module controller
+        store(context.mc_contract, "external_contract_table", [context.resources_contract], [ids.ExternalContractIds.Resources])
+        store(context.mc_contract, "external_contract_table", [context.lords_contract], [ids.ExternalContractIds.Lords])
+        store(context.mc_contract, "external_contract_table", [context.s_realms_contract], [ids.ExternalContractIds.S_Realms])
+        store(context.mc_contract, "external_contract_table", [context.realms_contract], [ids.ExternalContractIds.Realms])
+        store(context.mc_contract, "address_of_module_id", [context.combat_contract], [ids.ModuleIds.L06_Combat])
+
+        # store in local contract
+        store(context.self_address, "module_controller_address", [context.mc_contract])
 
 
         ## set local storage vars

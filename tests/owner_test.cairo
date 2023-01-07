@@ -14,6 +14,7 @@ const COMBAT_MODULE = 5;
 const BOUNTY_COUNT_LIMIT = 6;
 const BOUNTY_DEADLINE_LIMIT = 7;
 const DEV_FEES = 8;
+const MODULE_CONTROLLER = 9;
 
 @external
 func __setup__{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}() {
@@ -31,11 +32,7 @@ func __setup__{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
         resources_amount_array = resource_len*resources_amount 
         mercenary_address = deploy_contract("./contracts/mercenary.cairo", 
                        [ids.self_address, 
-                        ids.REALM_CONTRACT, 
-                        ids.S_REALM_CONTRACT, 
-                        ids.RESOURCE_CONTRACT,
-                        ids.LORDS_CONTRACT, 
-                        ids.COMBAT_MODULE, 
+                        ids.MODULE_CONTROLLER,
                         ids.DEV_FEES, 
                         ids.BOUNTY_COUNT_LIMIT,
                         *lords_limit_amount, 
@@ -76,19 +73,9 @@ func __setup__{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
         # values not accessible through getters
         ## retrieve
         owner = load(mercenary_address, "Ownable_owner", "felt")[0]
-        realms_contract = load(mercenary_address, "realm_contract", "felt")[0]
-        staked_realms_contract = load(mercenary_address, "staked_realm_contract", "felt")[0]
-        resources_contract = load(mercenary_address, "erc1155_contract", "felt")[0]
-        lords_contract = load(mercenary_address, "lords_contract", "felt")[0]
-        combat_module = load(mercenary_address, "combat_module", "felt")[0]
 
         ## compare
         assert owner == ids.self_address, f'owner error, expected {ids.self_address}, got {owner}'
-        assert realms_contract == ids.REALM_CONTRACT, f'realms_contract error, expected {ids.REALM_CONTRACT}, got {realms_contract}'
-        assert staked_realms_contract == ids.S_REALM_CONTRACT, f's_realms_contract error, expected {ids.S_REALM_CONTRACT}, got {staked_realms_contract}'
-        assert resources_contract == ids.RESOURCE_CONTRACT, f'resource_contract error, expected {ids.RESOURCE_CONTRACT}, got {resources_contract}'
-        assert lords_contract == ids.LORDS_CONTRACT, f'lords_contract error, expected {ids.LRODS_CONTRACT}, got {lords_contract}'
-        assert combat_module == ids.COMBAT_MODULE, f'combat_module error, expected {ids.COMBAT_MODULE}, got {combat_module}'
 
         # values retrieved through getters
         ## compare

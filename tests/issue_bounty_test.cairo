@@ -1,5 +1,6 @@
 %lang starknet
 
+// starkware
 from starkware.cairo.common.uint256 import Uint256
 from starkware.cairo.common.cairo_builtins import HashBuiltin
 from starkware.starknet.common.syscalls import (
@@ -9,9 +10,16 @@ from starkware.starknet.common.syscalls import (
 )
 from starkware.cairo.common.alloc import alloc
 
+// mercenary
 from contracts.mercenary import issue_bounty, onERC1155Received
 from contracts.storage import supportsInterface
 from contracts.structures import Bounty, BountyType
+
+// realms
+from realms_contracts_git.contracts.settling_game.utils.game_structs import (
+    ModuleIds,
+    ExternalContractIds,
+)
 
 @contract_interface
 namespace IRealms {
@@ -23,10 +31,6 @@ namespace IRealms {
 
 @contract_interface
 namespace IERC20 {
-    func mint(to: felt, tokenId: Uint256) {
-    }
-    func ownerOf(tokenId: Uint256) -> (owner: felt) {
-    }
     func approve(spender: felt, amount: Uint256) -> (success: felt) {
     }
     func transfer(recipient: felt, amount: Uint256) -> (success: felt) {
@@ -60,15 +64,15 @@ func __setup__{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
     local lords_contract;
     local account1;
     local realms_contract;
+    local mc_contract;
     %{
         ## deploy lords and resources contract
         context.self_address = ids.address
         context.lords_contract = deploy_contract("lib/cairo_contracts_git/src/openzeppelin/token/erc20/presets/ERC20Mintable.cairo",
          [0, 0, 6, ids.MINT_AMOUNT, 0, ids.address, ids.address]).contract_address
-        context.resources_contract = deploy_contract("lib/realms_contracts_git/contracts/token/ERC1155_Mintable_Burnable.cairo").contract_address
-        ## store in local to use in cairo
-        ids.resources_contract = context.resources_contract
         ids.lords_contract = context.lords_contract
+        context.resources_contract = deploy_contract("lib/realms_contracts_git/contracts/token/ERC1155_Mintable_Burnable.cairo").contract_address
+        ids.resources_contract = context.resources_contract
 
         ## deploy user accounts
         context.account1 = deploy_contract('./lib/argent_contracts_starknet_git/contracts/account/ArgentAccount.cairo').contract_address
@@ -78,10 +82,18 @@ func __setup__{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
         ids.realms_contract = deploy_contract("./lib/realms_contracts_git/contracts/settling_game/tokens/Realms_ERC721_Mintable.cairo").contract_address
         context.realms_contract = ids.realms_contract
 
+        ## deploy modules controller contract and setup external contract and modules ids
+        context.mc_contract = deploy_contract("./lib/realms_contracts_git/contracts/settling_game/ModuleController.cairo").contract_address
+        ids.mc_contract = context.mc_contract
+        # store in module controller
+        store(context.mc_contract, "external_contract_table", [context.resources_contract], [ids.ExternalContractIds.Resources])
+        store(context.mc_contract, "external_contract_table", [context.lords_contract], [ids.ExternalContractIds.Lords])
+        store(context.mc_contract, "external_contract_table", [context.realms_contract], [ids.ExternalContractIds.Realms])
+
+        # store in local contract
+        store(context.self_address, "module_controller_address", [context.mc_contract])
+
         ## set local storage vars
-        store(context.self_address, "lords_contract", [context.lords_contract])
-        store(context.self_address, "realm_contract", [context.realms_contract])
-        store(context.self_address, "erc1155_contract", [context.resources_contract])
         store(context.self_address, "bounty_count_limit", [ids.BOUNTY_COUNT_LIMIT])
         store(context.self_address, "bounty_deadline_limit", [ids.BOUNTY_DEADLINE_LIMIT])
     %}

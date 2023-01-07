@@ -37,6 +37,11 @@ from cairo_contracts_git.src.openzeppelin.token.erc20.IERC20 import IERC20
 from realms_contracts_git.contracts.settling_game.interfaces.IERC1155 import IERC1155
 from realms_contracts_git.contracts.settling_game.modules.resources.library import Resources
 from realms_contracts_git.contracts.settling_game.interfaces.IRealms import IRealms
+from realms_contracts_git.contracts.settling_game.utils.game_structs import (
+    ModuleIds,
+    ExternalContractIds,
+)
+from realms_contracts_git.contracts.settling_game.library.library_module import Module
 
 namespace MercenaryLib {
     // @notice Sets bounty_amount_limit_resources of token_ids(Uint256) -> amounts(Uint256)
@@ -78,8 +83,8 @@ namespace MercenaryLib {
 
         let (current_bounty) = bounties.read(target_realm_id, index);
         let (current_block) = get_block_number();
-        let (lords_address) = lords_contract.read();
-        let (erc1155_address) = erc1155_contract.read();
+        let (lords_address) = Module.get_external_contract_address(ExternalContractIds.Lords);
+        let (erc1155_address) = Module.get_external_contract_address(ExternalContractIds.Resources);
         let (contract_address) = get_contract_address();
 
         // if no bounty there or if the bounty's deadline is passed, put bounty there
@@ -156,8 +161,10 @@ namespace MercenaryLib {
         target_realm_id: felt
     ) -> (len: felt, balance: Uint256*, resource_ids: Uint256*) {
         alloc_locals;
-        let (realm_contract_address) = realm_contract.read();
-        let (erc1155_address) = erc1155_contract.read();
+        let (realm_contract_address) = Module.get_external_contract_address(
+            ExternalContractIds.Realms
+        );
+        let (erc1155_address) = Module.get_external_contract_address(ExternalContractIds.Resources);
 
         // resources ids
         let (local realms_data) = IRealms.fetch_realm_data(
@@ -219,8 +226,8 @@ namespace MercenaryLib {
         let (count_limit) = bounty_count_limit.read();
         let lords = sum_lords(target_realm_id, 0, count_limit);
 
-        let (lords_address) = lords_contract.read();
-        let (erc1155_address) = erc1155_contract.read();
+        let (lords_address) = Module.get_external_contract_address(ExternalContractIds.Lords);
+        let (erc1155_address) = Module.get_external_contract_address(ExternalContractIds.Resources);
 
         // transfer if lords amount > 0,0
         let (lords_equal_to_zero) = uint256_eq(lords, Uint256(0, 0));
