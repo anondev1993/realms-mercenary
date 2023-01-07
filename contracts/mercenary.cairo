@@ -69,8 +69,6 @@ from realms_contracts_git.contracts.settling_game.utils.game_structs import (
     ExternalContractIds,
 )
 
-// TODO: get_external_contract_address, get_module_address
-
 // -----------------------------------
 // Mercenary Logic
 // -----------------------------------
@@ -95,12 +93,6 @@ from realms_contracts_git.contracts.settling_game.utils.game_structs import (
 // @param token_ids_resources_len The length of resource ids array
 // @param token_ids_resources The resource ids array
 
-// TODO: remove that at the end
-// realm_contract_: felt,
-// staked_realm_contract_: felt,
-// erc1155_contract_: felt,
-// lords_contract_: felt,
-// combat_module_: felt,
 @constructor
 func constructor{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
     owner: felt,
@@ -118,12 +110,6 @@ func constructor{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr
     Ownable.initializer(owner);
     // init module controller
     Module.initializer(address_of_controller);
-
-    // realm_contract.write(realm_contract_);
-    // staked_realm_contract.write(staked_realm_contract_);
-    // erc1155_contract.write(erc1155_contract_);
-    // lords_contract.write(lords_contract_);
-    // combat_module.write(combat_module_);
     with_attr error_message("developer fee percentage higher than 100%") {
         assert_le_felt(developer_fees_percentage_, DEVELOPER_FEES_PRECISION);
     }

@@ -166,7 +166,6 @@ func __setup__{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
 }
 
 // check the difference in resources balance between before and after combat
-// TODO: add realms data to the nft
 @external
 func test_claim_without_bounties{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
     ) -> () {

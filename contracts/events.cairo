@@ -7,6 +7,8 @@ from starkware.cairo.common.uint256 import Uint256
 // EVENTS
 // ///////////////////
 
+// TODO: add event for the dev fees
+
 @event
 func bounty_issued(bounty: Bounty, target_realm_id: felt, index: felt) {
 }

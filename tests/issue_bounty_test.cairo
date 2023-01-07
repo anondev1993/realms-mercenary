@@ -114,7 +114,6 @@ func __setup__{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
         contract_address=lords_contract, recipient=account1, amount=Uint256(BOUNTY_AMOUNT, 0)
     );
 
-    // TODO do the real initializer
     IERC1155.initializer(resources_contract, 0, address);
     // mint and transfer resources to user 1
     let (local data: felt*) = alloc();

@@ -35,7 +35,13 @@ func combat_module() -> (address: felt) {
 // Bounties
 // -----------------------------------
 
-// TODO: separate storage to put developer fees
+@storage_var
+func dev_fees_lords() -> (amount: Uint256) {
+}
+
+@storage_var
+func dev_fees_resources(token_id: Uint256) -> (amount: Uint256) {
+}
 
 @storage_var
 func developer_fees_percentage() -> (fees: felt) {
