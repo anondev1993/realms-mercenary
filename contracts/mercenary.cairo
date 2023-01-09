@@ -28,6 +28,7 @@ from contracts.storage import (
     bounty_deadline_limit,
     bounties,
     bounty_count,
+    dev_fees_lords,
 )
 from contracts.getters import (
     view_developer_fees_percentage,
@@ -167,7 +168,7 @@ func remove_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_p
             contract_address=erc1155_address,
             _from=contract_address,
             to=caller_address,
-            id=bounty.type.resource,
+            id=bounty.type.resource_id,
             amount=bounty.amount,
             data_len=1,
             data=data,
@@ -253,7 +254,7 @@ func issue_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_pt
         tempvar pedersen_ptr = pedersen_ptr;
     } else {
         // check that the bounty amount is higher than the amount limit
-        let (amount_limit) = bounty_amount_limit_resources.read(bounty_type.resource);
+        let (amount_limit) = bounty_amount_limit_resources.read(bounty_type.resource_id);
         with_attr error_message("bounty amount lower than limit of {amount_limit}") {
             assert_uint256_le(amount_limit, bounty.amount);
         }
@@ -264,7 +265,7 @@ func issue_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_pt
             contract_address=erc1155_address,
             _from=caller_address,
             to=contract_address,
-            id=bounty_type.resource,
+            id=bounty_type.resource_id,
             amount=bounty.amount,
             data_len=1,
             data=data,
@@ -381,6 +382,44 @@ func claim_bounties{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_
         from_=contract_address,
         to=caller_address,
         tokenId=Uint256(attacking_realm_id, 0),
+    );
+
+    return ();
+}
+
+@external
+func transfer_dev_fees{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
+    destination_address: felt, resources_ids_len: felt, resources_ids: Uint256*
+) -> () {
+    alloc_locals;
+    Ownable.assert_only_owner();
+    // transfer lords
+    let (lords_address) = Module.get_external_contract_address(ExternalContractIds.Lords);
+    let (lords_amount) = dev_fees_lords.read();
+    IERC20.transfer(lords_address, destination_address, lords_amount);
+
+    // transfer resources
+    let (dev_resource_amounts: Uint256*) = alloc();
+    MercenaryLib.get_dev_resource_amounts(
+        resources_ids_len, resources_ids, dev_resource_amounts, 0
+    );
+
+    let (erc1155_address) = Module.get_external_contract_address(ExternalContractIds.Resources);
+    let (contract_address) = get_contract_address();
+
+    let (data: felt*) = alloc();
+    assert data[0] = 0;
+
+    IERC1155.safeBatchTransferFrom(
+        contract_address=erc1155_address,
+        _from=contract_address,
+        to=destination_address,
+        ids_len=resources_ids_len,
+        ids=resources_ids,
+        amounts_len=resources_ids_len,
+        amounts=dev_resource_amounts,
+        data_len=1,
+        data=data,
     );
 
     return ();

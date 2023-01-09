@@ -143,7 +143,7 @@ func test_issue_lords_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, ran
     %}
 
     // create bounty with lords
-    let bounty_type = BountyType(is_lords=1, resource=Uint256(0, 0));
+    let bounty_type = BountyType(is_lords=1, resource_id=Uint256(0, 0));
     let (ts) = get_block_timestamp();
     local deadline = ts + 1000;
     let bounty = Bounty(
@@ -200,7 +200,7 @@ func test_issue_resources_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*,
     %}
 
     // create bounty with resources
-    let bounty_type = BountyType(is_lords=0, resource=Uint256(1, 0));
+    let bounty_type = BountyType(is_lords=0, resource_id=Uint256(1, 0));
     let (ts) = get_block_timestamp();
     local deadline = ts + 1000;
     let bounty = Bounty(
@@ -247,7 +247,7 @@ func test_max_bounties_should_fail{syscall_ptr: felt*, pedersen_ptr: HashBuiltin
     %}
 
     // create lords bounty
-    let bounty_type = BountyType(is_lords=1, resource=Uint256(0, 0));
+    let bounty_type = BountyType(is_lords=1, resource_id=Uint256(0, 0));
     let (ts) = get_block_timestamp();
     local deadline = ts + 1000;
     let bounty = Bounty(
@@ -289,7 +289,7 @@ func test_replace_expired_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*,
     %}
 
     // create new lords bounty
-    let bounty_type = BountyType(is_lords=1, resource=Uint256(0, 0));
+    let bounty_type = BountyType(is_lords=1, resource_id=Uint256(0, 0));
     let (ts) = get_block_timestamp();
     local deadline = ts + 1500;
     let bounty = Bounty(
@@ -348,7 +348,7 @@ func test_not_big_enough_delay_should_fail{
     %}
 
     // create lords bounty
-    let bounty_type = BountyType(is_lords=1, resource=Uint256(0, 0));
+    let bounty_type = BountyType(is_lords=1, resource_id=Uint256(0, 0));
     let (ts) = get_block_timestamp();
     local deadline = ts + 50;
     let bounty = Bounty(

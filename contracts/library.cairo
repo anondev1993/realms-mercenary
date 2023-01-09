@@ -1,6 +1,6 @@
 %lang starknet
 from starkware.cairo.common.cairo_builtins import HashBuiltin
-from starkware.cairo.common.math_cmp import is_le
+from starkware.cairo.common.math_cmp import is_le, is_not_zero
 from starkware.starknet.common.syscalls import (
     get_caller_address,
     get_contract_address,
@@ -19,7 +19,7 @@ from starkware.cairo.common.alloc import alloc
 
 // Mercenary
 from contracts.structures import Bounty, BountyType
-from contracts.events import bounty_claimed
+from contracts.events import bounty_claimed, dev_fees_increase
 from contracts.storage import (
     realm_contract,
     erc1155_contract,
@@ -109,7 +109,7 @@ namespace MercenaryLib {
                     erc1155_address,
                     contract_address,
                     current_bounty.owner,
-                    current_bounty.type.resource,
+                    current_bounty.type.resource_id,
                     current_bounty.amount,
                     1,
                     data,
@@ -306,11 +306,12 @@ namespace MercenaryLib {
         // calculate total lords in bounty
         let lords = sum_lords(target_realm_id, 0, bounty_count_limit);
         // divide lords between attacker amount and dev amount
-        let (amount_without_fees, dev_fees) = MercenaryLib.divide_fees(lords, fees_percentage);
+        let (amount_without_fees, dev_fees) = divide_fees(lords, fees_percentage);
         // increment the current lords dev fees
         let (current_dev_fees) = dev_fees_lords.read();
         let (new_dev_fees, _) = uint256_add(current_dev_fees, dev_fees);
         dev_fees_lords.write(new_dev_fees);
+        dev_fees_increase.emit(is_lords=1, resource_id=Uint256(0, 0), added_amount=dev_fees);
 
         return (attacker_amount=amount_without_fees);
     }
@@ -340,15 +341,22 @@ namespace MercenaryLib {
         }
         let (bounty) = bounties.read(target_realm_id, index);
         local new_index;
-        if (bounty.type.is_lords == 0) {
-            assert resources_ids[array_index] = bounty.type.resource;
+        // if "is_lords" is zero there is a bounty.owner, then it is a resource bounty
+        local has_owner = is_not_zero(bounty.owner);
+        local not_lords = 1 - is_not_zero(bounty.type.is_lords);
+        if (has_owner + not_lords == 2) {
+            assert resources_ids[array_index] = bounty.type.resource_id;
             // divide between attacker amount and dev amount
             let (amount_without_fees, dev_fees) = divide_fees(bounty.amount, fees_percentage);
 
             // increment the current lords dev fees
-            let (current_dev_fees) = dev_fees_resources.read(bounty.type.resource);
+            let (current_dev_fees) = dev_fees_resources.read(bounty.type.resource_id);
             let (new_dev_fees, _) = uint256_add(current_dev_fees, dev_fees);
-            dev_fees_resources.write(bounty.type.resource, new_dev_fees);
+            dev_fees_resources.write(bounty.type.resource_id, new_dev_fees);
+            // TODO: if 50 resource bounties, will emit 50 events, is that issue ?
+            dev_fees_increase.emit(
+                is_lords=0, resource_id=bounty.type.resource_id, added_amount=dev_fees
+            );
 
             assert attacker_resources_amounts[array_index] = amount_without_fees;
             assert new_index = array_index + 1;
@@ -415,5 +423,21 @@ namespace MercenaryLib {
         );
         let (amount_without_fees) = uint256_sub(bounty_amount, dev_fees);
         return (attacker_amount=amount_without_fees, dev_amount=dev_fees);
+    }
+
+    // @notice Populates an array with the amounts reserved for the devs for each resource id
+    // @param resources_ids Array of resources ids
+    // @param resources_amounts Array of amounts
+    // @param index Index for the recursion
+    func get_dev_resource_amounts{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
+        resources_ids_len: felt, resources_ids: Uint256*, resources_amounts: Uint256*, index: felt
+    ) -> () {
+        if (index == resources_ids_len) {
+            return ();
+        }
+        let (resource_amount) = dev_fees_resources.read(resources_ids[index]);
+        assert resources_amounts[index] = resource_amount;
+        get_dev_resource_amounts(resources_ids_len, resources_ids, resources_amounts, index + 1);
+        return ();
     }
 }

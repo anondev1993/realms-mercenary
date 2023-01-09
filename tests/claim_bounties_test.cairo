@@ -117,7 +117,7 @@ func __setup__{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
         store(context.self_address, "staked_realm_contract", [context.s_realms_contract])
         store(context.self_address, "combat_module", [context.combat_contract])
         store(context.self_address, "bounty_count_limit", [ids.BOUNTY_COUNT_LIMIT])
-        store(context.self_address, "fees_percentage", [0])
+        store(context.self_address, "developer_fees_percentage", [1000])                               # 10% fees
 
         ## module controller storage
         store(context.mc_contract, "module_id_of_address", [1], [context.self_address])
@@ -202,18 +202,18 @@ func test_claim_with_bounties{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, ra
             if (i <= 9):
                 # 10 times
                 # lords bounties
-                store(context.self_address, "bounties", [0, ids.BOUNTY_AMOUNT, 0, 500, 1, 0, 0], [ids.TARGET_REALM_ID, i])
+                store(context.self_address, "bounties", [1, ids.BOUNTY_AMOUNT, 0, 500, 1, 0, 0], [ids.TARGET_REALM_ID, i])
             if (i >= 10 and i < 40):
                 # 30 resource bounties
-                store(context.self_address, "bounties", [0, ids.BOUNTY_AMOUNT, 0, 1000, 0, 1, 0], [ids.TARGET_REALM_ID, i])
+                store(context.self_address, "bounties", [1, ids.BOUNTY_AMOUNT, 0, 1000, 0, 1, 0], [ids.TARGET_REALM_ID, i])
             if (i>=40):
                 # 10 times
                 # resource bounties
-                store(context.self_address, "bounties", [0, ids.BOUNTY_AMOUNT, 0, 1000, 0, 2, 0], [ids.TARGET_REALM_ID, i])
+                store(context.self_address, "bounties", [1, ids.BOUNTY_AMOUNT, 0, 1000, 0, 2, 0], [ids.TARGET_REALM_ID, i])
 
         # verify that the bounty is correct
         bounty = load(context.self_address, "bounties", "Bounty", [ids.TARGET_REALM_ID, 12])
-        assert bounty == [0, ids.BOUNTY_AMOUNT, 0, 1000, 0, 1, 0]
+        assert bounty == [1, ids.BOUNTY_AMOUNT, 0, 1000, 0, 1, 0]
     %}
 
     %{ stop_prank_callable = start_prank(context.account1, context.self_address) %}
@@ -229,17 +229,37 @@ func test_claim_with_bounties{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, ra
         # verify that the bounty is removed after claim
         for i in range(0, ids.BOUNTY_COUNT_LIMIT):        
             bounty = load(context.self_address, "bounties", "Bounty", [ids.TARGET_REALM_ID, i])
-            assert bounty == [0, 0, 0, 0, 0, 0, 0]
+            assert bounty == [0, 0, 0, 0, 0, 0, 0], f'bounty is {bounty}'
 
-        # verify that the account1 received the new tokens
+        ## verify that the account1 received the new tokens
         resources_amount = load(context.resources_contract, "ERC1155_balances", "felt", [1, 0, context.account1]) 
         amount = 30*ids.BOUNTY_AMOUNT
+        # amount going to fees
+        amount -= divmod(amount, 10)[0]
         assert resources_amount[0] == amount, f'resources amount for token id 1 should be {amount} but is {resources_amount}'
 
+        ## verify the received amounts for token id 2,0
         resources_amount = load(context.resources_contract, "ERC1155_balances", "felt", [2, 0, context.account1]) 
-        # equal amount from bounties + what was gained from winning combat
-        amount =  10*ids.BOUNTY_AMOUNT + 1*10**18
+        # equal amount from bounties 
+        amount =  10*ids.BOUNTY_AMOUNT
+        # amount going to fees
+        amount -= divmod(amount, 10)[0]
+        # what was gained from winning combat (received token 2,0 and token 3,0 from combat module)
+        amount += 1*10**18
         assert resources_amount[0] == amount, f'resources amount for token id 2 should be {amount} but is {resources_amount}'
+    %}
+
+    // verify the emitted events for dev fees
+    %{
+        # lords fees events = 10% of total lords amount
+        (increase_total_lords_fees, _) = divmod(ids.BOUNTY_AMOUNT*10, 10)
+        # resource fees events = 10% of each resource amount
+        (increase_resource_fees, _) = divmod(ids.BOUNTY_AMOUNT, 10)
+        expect_events(
+        {"name": "dev_fees_increase", "data": {"is_lords": 1, "resource_id": {"low": 0, "high": 0}, "added_amount": {"low": increase_total_lords_fees, "high": 0}}},
+        {"name": "dev_fees_increase", "data": {"is_lords": 0, "resource_id": {"low": 1, "high": 0}, "added_amount": {"low": increase_resource_fees, "high": 0}}},
+        {"name": "dev_fees_increase", "data": {"is_lords": 0, "resource_id": {"low": 2, "high": 0}, "added_amount": {"low": increase_resource_fees, "high": 0}}}
+        ),
     %}
 
     return ();

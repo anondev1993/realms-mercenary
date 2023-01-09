@@ -1,10 +1,19 @@
 %lang starknet
 
+// starkware
 from starkware.cairo.common.cairo_builtins import HashBuiltin
 from starkware.starknet.common.syscalls import get_contract_address
 from starkware.cairo.common.uint256 import Uint256
+from starkware.cairo.common.alloc import alloc
 
+// mercenary
 from contracts.interface import IMercenary
+
+// realms
+from realms_contracts_git.contracts.settling_game.utils.game_structs import (
+    ModuleIds,
+    ExternalContractIds,
+)
 
 const RESOURCE_CONTRACT = 1;
 const LORDS_CONTRACT = 2;
@@ -13,8 +22,13 @@ const REALM_CONTRACT = 4;
 const COMBAT_MODULE = 5;
 const BOUNTY_COUNT_LIMIT = 6;
 const BOUNTY_DEADLINE_LIMIT = 7;
-const DEV_FEES = 8;
+const DEV_FEES_PERCENTAGE = 8;
 const MODULE_CONTROLLER = 9;
+const LORDS_DEV_FEES = 11 * 10 ** 18;
+const RESOURCES_DEV_FEES_TOKEN1 = 4 * 10 ** 18;
+const RESOURCES_DEV_FEES_TOKEN2 = 5 * 10 ** 18;
+const RESOURCES_DEV_FEES_TOKEN3 = 6 * 10 ** 18;
+const MINT_AMOUNT = 100 * 10 ** 18;
 
 @external
 func __setup__{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}() {
@@ -33,7 +47,7 @@ func __setup__{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
         mercenary_address = deploy_contract("./contracts/mercenary.cairo", 
                        [ids.self_address, 
                         ids.MODULE_CONTROLLER,
-                        ids.DEV_FEES, 
+                        ids.DEV_FEES_PERCENTAGE, 
                         ids.BOUNTY_COUNT_LIMIT,
                         *lords_limit_amount, 
                         ids.BOUNTY_DEADLINE_LIMIT,
@@ -79,7 +93,7 @@ func __setup__{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
 
         # values retrieved through getters
         ## compare
-        assert ids.dev_fees_perc == ids.DEV_FEES, f'dev fees error, exepcted {ids.DEV_FEES}, got {dev_fees_perc}'
+        assert ids.dev_fees_perc == ids.DEV_FEES_PERCENTAGE, f'dev fees error, exepcted {ids.DEV_FEES_PERCENTAGE}, got {dev_fees_perc}'
         assert ids.bounty_count_limit == ids.BOUNTY_COUNT_LIMIT, f'bounty count limit error, expected {ids.BOUNTY_COUNT_LIMIT}, got {bounty_count_limit}' 
 
         bounty_amount_limit_lords = reflect(ids).bounty_amount_limit_lords.get()
@@ -161,6 +175,78 @@ func test_setter_not_owner{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range
     IMercenary.set_developer_fees_percentage(
         contract_address=mercenary_address, developer_fees_percentage_=1
     );
+
+    return ();
+}
+
+@external
+func test_send_back_dev_fees{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}() -> (
+    ) {
+    alloc_locals;
+    local account1;
+    let (self_address) = get_contract_address();
+    local mercenary_address;
+    %{
+        ids.mercenary_address = context.mercenary_address
+        ## deploy user account
+        ## TODO: warning from __validate__deploy
+        context.account1 = deploy_contract('./lib/argent_contracts_starknet_git/contracts/account/ArgentAccount.cairo').contract_address
+        ids.account1 = context.account1
+
+        ## deploy resources contract
+        context.resources_contract = deploy_contract("lib/realms_contracts_git/contracts/token/ERC1155_Mintable_Burnable.cairo").contract_address
+
+        ## deploy lords contract
+        context.lords_contract = deploy_contract("lib/cairo_contracts_git/src/openzeppelin/token/erc20/presets/ERC20Mintable.cairo", \
+        [0, 0, 6, ids.MINT_AMOUNT, 0, ids.self_address, ids.self_address]).contract_address
+
+        ## deploy modules controller contract and setup external contract and modules ids
+        context.mc_contract = deploy_contract("./lib/realms_contracts_git/contracts/settling_game/ModuleController.cairo").contract_address
+        # store in module controller
+        store(context.mc_contract, "external_contract_table", [context.resources_contract], [ids.ExternalContractIds.Resources])
+        store(context.mc_contract, "external_contract_table", [context.lords_contract], [ids.ExternalContractIds.Lords])
+        # store in mercenary contract
+        store(ids.mercenary_address, "module_controller_address", [context.mc_contract])
+
+        ## store amounts in dev fees storage
+        # lords
+        store(ids.mercenary_address, "dev_fees_lords", [ids.LORDS_DEV_FEES])
+
+        # resources
+        store(ids.mercenary_address, "dev_fees_resources", [ids.RESOURCES_DEV_FEES_TOKEN1, 0], [1, 0])
+        store(ids.mercenary_address, "dev_fees_resources", [ids.RESOURCES_DEV_FEES_TOKEN2, 0], [2, 0])
+        store(ids.mercenary_address, "dev_fees_resources", [ids.RESOURCES_DEV_FEES_TOKEN3, 0], [3, 0])
+
+        ## mint some resources and lords for mercenary contract
+        #directly change in the storage the amounts
+        store(context.lords_contract, "ERC20_balances", [ids.MINT_AMOUNT], [context.mercenary_address])
+        store(context.resources_contract, "ERC1155_balances", [ids.MINT_AMOUNT], [1, 0, context.mercenary_address])
+        store(context.resources_contract, "ERC1155_balances", [ids.MINT_AMOUNT], [2, 0, context.mercenary_address])
+        store(context.resources_contract, "ERC1155_balances", [ids.MINT_AMOUNT], [3, 0, context.mercenary_address])
+    %}
+
+    let (resources_ids: Uint256*) = alloc();
+    assert resources_ids[0] = Uint256(1, 0);
+    assert resources_ids[1] = Uint256(2, 0);
+    assert resources_ids[2] = Uint256(3, 0);
+
+    // test function that sends the dev fees
+    IMercenary.transfer_dev_fees(mercenary_address, account1, 3, resources_ids);
+
+    // verify balance of accoun1
+    %{
+        # lords
+        balance_lords = load(context.lords_contract, "ERC20_balances", "Uint256", [ids.account1])[0]
+        # resources
+        balance_resources1 = load(context.resources_contract, "ERC1155_balances", "Uint256", [1, 0, ids.account1])[0]
+        balance_resources2 = load(context.resources_contract, "ERC1155_balances", "Uint256", [2, 0, ids.account1])[0]
+        balance_resources3 = load(context.resources_contract, "ERC1155_balances", "Uint256", [3, 0, ids.account1])[0]
+
+        assert balance_lords == ids.LORDS_DEV_FEES
+        assert balance_resources1 == ids.RESOURCES_DEV_FEES_TOKEN1
+        assert balance_resources2 == ids.RESOURCES_DEV_FEES_TOKEN2
+        assert balance_resources3 == ids.RESOURCES_DEV_FEES_TOKEN3
+    %}
 
     return ();
 }

@@ -16,6 +16,10 @@ namespace IMercenary {
     }
     func issue_bounty(target_realm_id: felt, bounty: Bounty) -> (index: felt) {
     }
+    func transfer_dev_fees(
+        destination_address: felt, resources_ids_len: felt, resources_ids: Uint256*
+    ) -> () {
+    }
 
     //
     // Getters
