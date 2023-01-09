@@ -5,6 +5,12 @@ from starkware.cairo.common.uint256 import Uint256
 from starkware.starknet.common.syscalls import get_caller_address, get_contract_address
 from starkware.cairo.common.alloc import alloc
 
+//
+// @notice Fake Combat contract to mock the combat outcome
+// @dev Returns the combat outcome and also sends back resource
+// @dev token ids (2, 0) and (3, 0) to mock the pillaging of a realm
+//
+
 @contract_interface
 namespace IERC1155 {
     func safeBatchTransferFrom(

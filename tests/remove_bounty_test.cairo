@@ -1,9 +1,17 @@
 %lang starknet
 
+// starkware
 from starkware.cairo.common.cairo_builtins import HashBuiltin
 from starkware.starknet.common.syscalls import get_contract_address
 
+// contract
 from contracts.mercenary import remove_bounty
+
+// realms
+from realms_contracts_git.contracts.settling_game.utils.game_structs import (
+    ModuleIds,
+    ExternalContractIds,
+)
 
 const MINT_AMOUNT = 0;
 const BOUNTY_AMOUNT = 5 * 10 ** 18;
@@ -27,6 +35,15 @@ func __setup__{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
 
         ## deploy lords contract
         context.lords_contract = deploy_contract("lib/cairo_contracts_git/src/openzeppelin/token/erc20/presets/ERC20Mintable.cairo", [0, 0, 6, ids.MINT_AMOUNT, 0, ids.self_address, ids.self_address]).contract_address
+
+        ## deploy modules controller contract and setup external contract and modules ids
+        context.mc_contract = deploy_contract("./lib/realms_contracts_git/contracts/settling_game/ModuleController.cairo").contract_address
+        # store in module controller
+        store(context.mc_contract, "external_contract_table", [context.resources_contract], [ids.ExternalContractIds.Resources])
+        store(context.mc_contract, "external_contract_table", [context.lords_contract], [ids.ExternalContractIds.Lords])
+
+        # store in local contract
+        store(ids.self_address, "module_controller_address", [context.mc_contract])
 
         context.self_address = ids.self_address
         for i in range(0, ids.BOUNTY_COUNT_LIMIT):

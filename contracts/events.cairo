@@ -21,3 +21,7 @@ func bounty_claimed(
     token_amounts: Uint256*,
 ) {
 }
+
+@event
+func dev_fees_increase(is_lords: felt, resource_id: Uint256, added_amount: Uint256) {
+}

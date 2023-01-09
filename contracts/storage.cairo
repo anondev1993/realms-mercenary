@@ -1,15 +1,14 @@
 %lang starknet
 
-from contracts.structures import Bounty
 from starkware.cairo.common.uint256 import Uint256
 from starkware.cairo.common.cairo_builtins import HashBuiltin
 from starkware.cairo.common.bool import TRUE, FALSE
 
-// TODO: move all constants to one file
-const IERC1155_RECEIVER_ID = 0x4e2312e0;
+from contracts.structures import Bounty
+from contracts.constants import IERC1155_RECEIVER_ID
 
 // -----------------------------------
-// Main Storage
+// Contracts
 // -----------------------------------
 
 @storage_var
@@ -32,13 +31,21 @@ func lords_contract() -> (address: felt) {
 func combat_module() -> (address: felt) {
 }
 
+// -----------------------------------
+// Bounties
+// -----------------------------------
+
+@storage_var
+func dev_fees_lords() -> (amount: Uint256) {
+}
+
+@storage_var
+func dev_fees_resources(token_id: Uint256) -> (amount: Uint256) {
+}
+
 @storage_var
 func developer_fees_percentage() -> (fees: felt) {
 }
-
-// -----------------------------------
-// Bounty Storage
-// -----------------------------------
 
 @storage_var
 func bounty_count_limit() -> (limit: felt) {
@@ -65,7 +72,7 @@ func bounty_count(realm_id: felt) -> (count: felt) {
 }
 
 // -----------------------------------
-// Views
+// Support Interfaces
 // -----------------------------------
 @view
 func supportsInterface{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(

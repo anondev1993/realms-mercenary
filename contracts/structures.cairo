@@ -8,7 +8,7 @@ from starkware.cairo.common.uint256 import Uint256
 
 struct BountyType {
     is_lords: felt,
-    resource: Uint256,
+    resource_id: Uint256,
 }
 
 // bounty type 0 = LORDS
