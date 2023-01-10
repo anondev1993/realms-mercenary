@@ -1,5 +1,6 @@
 %lang starknet
 
+// starkware
 from starkware.cairo.common.cairo_builtins import HashBuiltin
 from starkware.cairo.common.uint256 import Uint256
 from starkware.cairo.common.math import assert_nn_le
@@ -72,5 +73,3 @@ func set_bounty_deadline_limit{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, r
     bounty_deadline_limit.write(bounty_deadline_limit_);
     return ();
 }
-
-// TODO: setter for the module controller

@@ -146,28 +146,8 @@ func remove_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_p
         assert bounty.owner = caller_address;
     }
 
-    // transfer back the funds to the owner
-    if (bounty.type.is_lords == 1) {
-        // if lords
-        IERC20.transfer(lords_address, caller_address, bounty.amount);
-        tempvar syscall_ptr = syscall_ptr;
-        tempvar range_check_ptr = range_check_ptr;
-    } else {
-        // if resources
-        let (data: felt*) = alloc();
-        assert data[0] = 0;
-        IERC1155.safeTransferFrom(
-            contract_address=erc1155_address,
-            _from=contract_address,
-            to=caller_address,
-            id=bounty.type.resource_id,
-            amount=bounty.amount,
-            data_len=1,
-            data=data,
-        );
-        tempvar syscall_ptr = syscall_ptr;
-        tempvar range_check_ptr = range_check_ptr;
-    }
+    // transfer back the bounty
+    MercenaryLib.transfer_back_bounty(lords_address, erc1155_address, contract_address, bounty);
 
     // decrement bounty counter
     MercenaryLib.decrease_bounty_count(target_realm_id);
@@ -392,7 +372,7 @@ func claim_bounties{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_
 // @notice Transfer the developer fees to any address
 // @param destination_address The destination address for the fees
 // @param resources_ids_len The length of the resources_ids array
-// @param The ids of the resources that need to be transferred
+// @param resources_ids The ids of the resources that need to be transferred
 @external
 func transfer_dev_fees{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
     destination_address: felt, resources_ids_len: felt, resources_ids: Uint256*

@@ -111,11 +111,6 @@ func __setup__{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
 
 
         ## set local storage vars
-        store(context.self_address, "lords_contract", [context.lords_contract])
-        store(context.self_address, "erc1155_contract", [context.resources_contract])
-        store(context.self_address, "realm_contract", [context.realms_contract])
-        store(context.self_address, "staked_realm_contract", [context.s_realms_contract])
-        store(context.self_address, "combat_module", [context.combat_contract])
         store(context.self_address, "bounty_count_limit", [ids.BOUNTY_COUNT_LIMIT])
         store(context.self_address, "developer_fees_percentage", [1000])                               # 10% fees
 
