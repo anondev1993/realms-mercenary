@@ -10,11 +10,6 @@ from cairo_contracts_git.src.openzeppelin.access.ownable.library import Ownable
 from contracts.structures import Bounty
 from contracts.constants import DEVELOPER_FEES_PRECISION
 from contracts.storage import (
-    realm_contract,
-    staked_realm_contract,
-    erc1155_contract,
-    lords_contract,
-    combat_module,
     developer_fees_percentage,
     bounty_count_limit,
     bounty_amount_limit_lords,
@@ -77,3 +72,5 @@ func set_bounty_deadline_limit{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, r
     bounty_deadline_limit.write(bounty_deadline_limit_);
     return ();
 }
+
+// TODO: setter for the module controller

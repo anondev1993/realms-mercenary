@@ -3,3 +3,4 @@
 #build
 build
 node.json
+.DS_Store

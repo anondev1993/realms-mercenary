@@ -42,15 +42,15 @@ func __setup__{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
             if (i <= 9):
                 # 10 times
                 # lords bounties
-                store(context.self_address, "bounties", [ids.ACCOUNT1, ids.BOUNTY_AMOUNT, 0, 500, 1, 0, 0], [ids.TARGET_REALM_ID, i])
+                store(context.self_address, "bounties", [ids.ACCOUNT1, ids.BOUNTY_AMOUNT, 0, 500, 1, 0, 0], [ids.TARGET_REALM_ID, 0, i])
             if (i >= 10 and i < 40):
                 # 30 times
                 # resource bounties
-                store(context.self_address, "bounties", [ids.ACCOUNT1, ids.BOUNTY_AMOUNT, 0, 1000, 0, 1, 0], [ids.TARGET_REALM_ID, i])
+                store(context.self_address, "bounties", [ids.ACCOUNT1, ids.BOUNTY_AMOUNT, 0, 1000, 0, 1, 0], [ids.TARGET_REALM_ID, 0, i])
             if (i>=40):
                 # 10 times
                 # resource bounties
-                store(context.self_address, "bounties", [ids.ACCOUNT1, ids.BOUNTY_AMOUNT, 0, 1000, 1, 0, 0], [ids.TARGET_REALM_ID, i])
+                store(context.self_address, "bounties", [ids.ACCOUNT1, ids.BOUNTY_AMOUNT, 0, 1000, 1, 0, 0], [ids.TARGET_REALM_ID, 0, i])
     %}
     return ();
 }
@@ -61,12 +61,12 @@ func __setup__{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
 func test_collect_lords{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}() {
     alloc_locals;
     with_attr error_message("bounty at index 0 not initialized") {
-        let (bounty) = bounties.read(TARGET_REALM_ID, 0);
+        let (bounty) = bounties.read(Uint256(TARGET_REALM_ID, 0), 0);
         assert_uint256_eq(bounty.amount, Uint256(BOUNTY_AMOUNT, 0));
     }
 
     let (local attacker_amount) = MercenaryLib.collect_lords(
-        TARGET_REALM_ID, BOUNTY_COUNT_LIMIT, FEE_PERCENTAGE
+        Uint256(TARGET_REALM_ID, 0), BOUNTY_COUNT_LIMIT, FEE_PERCENTAGE
     );
 
     // verify the lords amounts between attacker and dev
@@ -94,17 +94,19 @@ func test_collect_resources{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, rang
     // cairo calculations
     let (local resources_ids: Uint256*) = alloc();
     let (local attacker_resources_amounts: Uint256*) = alloc();
+    let (local dev_resources_amounts: Uint256*) = alloc();
 
     // quick check for random bounty
     with_attr error_message("bounty 12 not initialized") {
-        let (bounty) = bounties.read(TARGET_REALM_ID, 12);
+        let (bounty) = bounties.read(Uint256(TARGET_REALM_ID, 0), 12);
         assert_uint256_eq(bounty.amount, Uint256(BOUNTY_AMOUNT, 0));
     }
 
     let ids_len = MercenaryLib.collect_resources(
         resources_ids,
         attacker_resources_amounts,
-        TARGET_REALM_ID,
+        dev_resources_amounts,
+        Uint256(TARGET_REALM_ID, 0),
         0,
         0,
         BOUNTY_COUNT_LIMIT,
@@ -138,7 +140,7 @@ func test_collect_resources{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, rang
 
         ## assert resources bounties resets
         for i in range(0, ids.BOUNTY_COUNT_LIMIT):
-            bounty = load(context.self_address, "bounties", "Bounty", [ids.TARGET_REALM_ID, i])
+            bounty = load(context.self_address, "bounties", "Bounty", [ids.TARGET_REALM_ID, 0, i])
             # if bounty is resources bounty
             if bounty[4] != 1:
                 assert bounty == 7*[0]

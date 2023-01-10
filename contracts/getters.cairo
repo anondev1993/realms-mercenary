@@ -5,11 +5,6 @@ from starkware.cairo.common.uint256 import Uint256
 from contracts.structures import Bounty
 
 from contracts.storage import (
-    realm_contract,
-    staked_realm_contract,
-    erc1155_contract,
-    lords_contract,
-    combat_module,
     developer_fees_percentage,
     bounty_count_limit,
     bounty_amount_limit_lords,
@@ -60,7 +55,7 @@ func view_bounty_deadline_limit{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, 
 
 @view
 func view_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
-    target_realm_id: felt, index: felt
+    target_realm_id: Uint256, index: felt
 ) -> (bounty: Bounty) {
     let (bounty) = bounties.read(target_realm_id, index);
     return (bounty=bounty);
@@ -68,7 +63,7 @@ func view_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr
 
 @view
 func view_bounty_count{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
-    target_realm_id: felt
+    target_realm_id: Uint256
 ) -> (bounty_count: felt) {
     let (bounty_count_) = bounty_count.read(target_realm_id);
     return (bounty_count=bounty_count_);

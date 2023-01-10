@@ -3,6 +3,7 @@
 // starkware
 from starkware.cairo.common.cairo_builtins import HashBuiltin
 from starkware.starknet.common.syscalls import get_contract_address
+from starkware.cairo.common.uint256 import Uint256
 
 // contract
 from contracts.mercenary import remove_bounty
@@ -50,19 +51,19 @@ func __setup__{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
             if (i <= 9):
                 # 10 times
                 # lords bounties
-                store(context.self_address, "bounties", [ids.account1, ids.BOUNTY_AMOUNT, 0, 500, 1, 0, 0], [ids.TARGET_REALM_ID, i])
+                store(context.self_address, "bounties", [ids.account1, ids.BOUNTY_AMOUNT, 0, 500, 1, 0, 0], [ids.TARGET_REALM_ID, 0, i])
             if (i >= 10 and i < 40):
                 # 30 resource bounties
-                store(context.self_address, "bounties", [ids.account1, ids.BOUNTY_AMOUNT, 0, 1000, 0, 1, 0], [ids.TARGET_REALM_ID, i])
+                store(context.self_address, "bounties", [ids.account1, ids.BOUNTY_AMOUNT, 0, 1000, 0, 1, 0], [ids.TARGET_REALM_ID, 0, i])
             if (i>=40):
                 # 10 times
                 # resource bounties
-                store(context.self_address, "bounties", [ids.account1, ids.BOUNTY_AMOUNT, 0, 1000, 0, 2, 0], [ids.TARGET_REALM_ID, i])
+                store(context.self_address, "bounties", [ids.account1, ids.BOUNTY_AMOUNT, 0, 1000, 0, 2, 0], [ids.TARGET_REALM_ID, 0, i])
 
         # verify that the bounty at index 0 and index 12is correct
-        bounty = load(context.self_address, "bounties", "Bounty", [ids.TARGET_REALM_ID, 1])
+        bounty = load(context.self_address, "bounties", "Bounty", [ids.TARGET_REALM_ID, 0, 1])
         assert bounty == [ids.account1, ids.BOUNTY_AMOUNT, 0, 500, 1, 0, 0]
-        bounty = load(context.self_address, "bounties", "Bounty", [ids.TARGET_REALM_ID, 12])
+        bounty = load(context.self_address, "bounties", "Bounty", [ids.TARGET_REALM_ID, 0, 12])
         assert bounty == [ids.account1, ids.BOUNTY_AMOUNT, 0, 1000, 0, 1, 0]
 
         # put some erc1155 and erc20 tokens in bounty contract (this contract)
@@ -85,11 +86,11 @@ func test_remove_lords_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, ra
     ) -> () {
     alloc_locals;
     %{ stop_prank_callable = start_prank(caller_address=context.account1, target_contract_address=context.self_address) %}
-    remove_bounty(1, TARGET_REALM_ID);
+    remove_bounty(1, Uint256(TARGET_REALM_ID, 0));
     %{ stop_prank_callable() %}
     %{
         # verify that the bounty is removed after claim
-        bounty = load(context.self_address, "bounties", "Bounty", [ids.TARGET_REALM_ID, 1])
+        bounty = load(context.self_address, "bounties", "Bounty", [ids.TARGET_REALM_ID, 0, 1])
         assert bounty == [0, 0, 0, 0, 0, 0, 0]
 
         lords_amount = load(context.lords_contract, "ERC20_balances", "Uint256", [context.account1])
@@ -103,11 +104,11 @@ func test_remove_resources_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*
     ) -> () {
     alloc_locals;
     %{ stop_prank_callable = start_prank(caller_address=context.account1, target_contract_address=context.self_address) %}
-    remove_bounty(12, TARGET_REALM_ID);
+    remove_bounty(12, Uint256(TARGET_REALM_ID, 0));
     %{ stop_prank_callable() %}
     %{
         # verify that the bounty is removed after claim
-        bounty = load(context.self_address, "bounties", "Bounty", [ids.TARGET_REALM_ID, 12])
+        bounty = load(context.self_address, "bounties", "Bounty", [ids.TARGET_REALM_ID, 0, 12])
         assert bounty == [0, 0, 0, 0, 0, 0, 0]
 
         # verify that the account1 received the new tokens

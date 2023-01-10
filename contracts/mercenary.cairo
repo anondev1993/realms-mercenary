@@ -13,14 +13,9 @@ from starkware.cairo.common.alloc import alloc
 
 // Mercenary
 from contracts.structures import Bounty, BountyType
-from contracts.events import bounty_issued
+from contracts.events import BountyIssued
 from contracts.library import MercenaryLib
 from contracts.storage import (
-    realm_contract,
-    staked_realm_contract,
-    erc1155_contract,
-    lords_contract,
-    combat_module,
     developer_fees_percentage,
     bounty_count_limit,
     bounty_amount_limit_lords,
@@ -80,13 +75,9 @@ from realms_contracts_git.contracts.settling_game.utils.game_structs import (
 
 // @notice Mercenary constructor
 // @param owner The contract owner
-// @param realm_contract_ The contract of Realms NFT
-// @param staked_realm_contract_ The contract of staked Realms NFT
-// @param erc1155_contract_ The address of the resources contract
-// @param lords_contract_ The address of the lords token contract
-// @param combat_module_ The address of the combat module
+// @param address_of_controller The address of the module controller
 // @param developer_fees_percentage_ The developer royalties
-// @param bounty_count_limit The max number of bounties on one realm at a time
+// @param bounty_count_limit_ The max number of bounties on one realm at a time
 // @param bounty_amount_limit_lords_ The minimum lords amount for a bounty
 // @param bounty_deadline_limit_ The min lifetime of a bounty
 // @param amount_limit_resources_len The length of min resources amount array
@@ -111,7 +102,7 @@ func constructor{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr
     Ownable.initializer(owner);
     // init module controller
     Module.initializer(address_of_controller);
-    with_attr error_message("developer fee percentage higher than 100%") {
+    with_attr error_message("Developer fee percentage higher than 100%") {
         assert_le_felt(developer_fees_percentage_, DEVELOPER_FEES_PRECISION);
     }
     developer_fees_percentage.write(developer_fees_percentage_);
@@ -129,10 +120,12 @@ func constructor{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr
     return ();
 }
 
-// TODO: add description
+// @notice Allows the owner of a bounty to remove it and transfer back the amount of the bounty
+// @param index Index of the bounty
+// @param target_realm_id Id of the target realm
 @external
 func remove_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
-    index: felt, target_realm_id: felt
+    index: felt, target_realm_id: Uint256
 ) -> () {
     alloc_locals;
     let (caller_address) = get_caller_address();
@@ -143,16 +136,14 @@ func remove_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_p
 
     let (bounty) = bounties.read(target_realm_id, index);
 
-    let bounty_owner = bounty.owner;
-
     // assert that there is a bounty at that location
-    with_attr error_message("no bounty on that index") {
-        assert_not_zero(bounty_owner);
+    with_attr error_message("No bounty on that index") {
+        assert_not_zero(bounty.owner);
     }
 
     // assert that caller is the owner
-    with_attr error_message("only owner of the bounty can remove it") {
-        assert bounty_owner = caller_address;
+    with_attr error_message("Only owner of the bounty can remove it") {
+        assert bounty.owner = caller_address;
     }
 
     // transfer back the funds to the owner
@@ -178,6 +169,9 @@ func remove_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_p
         tempvar range_check_ptr = range_check_ptr;
     }
 
+    // decrement bounty counter
+    MercenaryLib.decrease_bounty_count(target_realm_id);
+
     // set the bounty to 0 in the list
     bounties.write(
         target_realm_id, index, Bounty(0, Uint256(0, 0), 0, BountyType(0, Uint256(0, 0)))
@@ -185,24 +179,26 @@ func remove_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_p
     return ();
 }
 
-// @notice Issues an bounty on the designated realm
+// @notice Issues a bounty on the designated realm
 // @param target_realm_id The target realm id
 // @param bounty The bounty to be issued
 // @return index The index of the new bounty
 @external
 func issue_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
-    target_realm_id: felt, bounty: Bounty
+    target_realm_id: Uint256, bounty: Bounty
 ) -> (index: felt) {
     alloc_locals;
     // check that the owner of the bounty is the caller
+    // DISCUSS: This is a double check to make sure that the bounty being placed is the right one
+    // DISCUSS: not necessarily needed as we could fill bounty.owner ourselves
     let (caller_address) = get_caller_address();
-    with_attr error_message("bounty owner is not the caller of the contract") {
+    with_attr error_message("Bounty owner is not the caller of the contract") {
         assert caller_address = bounty.owner;
     }
 
     let (realm_contract_address) = Module.get_external_contract_address(ExternalContractIds.Realms);
     // check that this realm exists
-    let (realm_name) = IRealms.get_realm_name(realm_contract_address, Uint256(target_realm_id, 0));
+    let (realm_name) = IRealms.get_realm_name(realm_contract_address, target_realm_id);
     with_attr error_message("This realm does not exist") {
         assert_not_zero(realm_name);
     }
@@ -210,36 +206,32 @@ func issue_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_pt
     // check that target realm can still have an additional bounty added to them.
     let (count) = bounty_count.read(target_realm_id);
     let (local count_limit) = bounty_count_limit.read();
-    let new_count = count + 1;
-
-    // parse the bounty struct in order to check the type of bounty ($LORDS or resources),
-    // the amount (and optionally the type of resource for the bounty) and the delay.
-    let bounty_type = bounty.type;
-    let (current_block) = get_block_number();
 
     // Check for valid delay and amount.
     // verify that amount is bigger than 0
-    with_attr error_message("bounty amount negative or null") {
+    with_attr error_message("Bounty amount negative or null") {
         assert_uint256_le(Uint256(0, 0), bounty.amount);
     }
 
+    // deadline_limit is an interval of blocks
+    // minimum limit
+    let (current_block) = get_block_number();
     let (deadline_limit) = bounty_deadline_limit.read();
     let time = bounty.deadline - current_block;
     // verify that the delay is higher than the bounty_deadline_limit
-    with_attr error_message("deadline not far enough in time") {
+    with_attr error_message("Deadline not far enough in time") {
         assert is_le(deadline_limit, time) = 1;
     }
 
     let (lords_address) = Module.get_external_contract_address(ExternalContractIds.Lords);
-
     let (erc1155_address) = Module.get_external_contract_address(ExternalContractIds.Resources);
     let (contract_address) = get_contract_address();
 
     // transfer the amount from the caller to the mercenary contract
-    if (bounty_type.is_lords == 1) {
+    if (bounty.type.is_lords == 1) {
         // check that the bounty amount is higher than the amount limit
         let (amount_limit) = bounty_amount_limit_lords.read();
-        with_attr error_message("bounty amount lower than limit of {amount_limit}") {
+        with_attr error_message("Bounty amount lower than limit of {amount_limit}") {
             assert_uint256_le(amount_limit, bounty.amount);
         }
 
@@ -255,8 +247,8 @@ func issue_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_pt
         tempvar pedersen_ptr = pedersen_ptr;
     } else {
         // check that the bounty amount is higher than the amount limit
-        let (amount_limit) = bounty_amount_limit_resources.read(bounty_type.resource_id);
-        with_attr error_message("bounty amount lower than limit of {amount_limit}") {
+        let (amount_limit) = bounty_amount_limit_resources.read(bounty.type.resource_id);
+        with_attr error_message("Bounty amount lower than limit of {amount_limit}") {
             assert_uint256_le(amount_limit, bounty.amount);
         }
 
@@ -266,7 +258,7 @@ func issue_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_pt
             contract_address=erc1155_address,
             _from=caller_address,
             to=contract_address,
-            id=bounty_type.resource_id,
+            id=bounty.type.resource_id,
             amount=bounty.amount,
             data_len=1,
             data=data,
@@ -280,11 +272,19 @@ func issue_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_pt
     // - go over all indices
     // - check if index < MAXIMUM_BOUNTIES_PER_REALM
     // - check if the spot is open at this index (nothing or deadline passed), if so write, if not continue
-    let (index) = MercenaryLib._add_bounty_to_storage(bounty, target_realm_id, count_limit, 0);
-    bounty_count.write(target_realm_id, new_count);
+    let (index) = MercenaryLib._add_bounty_to_storage(
+        bounty,
+        target_realm_id,
+        count_limit,
+        current_block,
+        lords_address,
+        erc1155_address,
+        contract_address,
+        0,
+    );
 
     // emit event
-    bounty_issued.emit(bounty=bounty, target_realm_id=target_realm_id, index=index);
+    BountyIssued.emit(bounty=bounty, target_realm_id=target_realm_id, index=index);
 
     return (index=index);
 }
@@ -299,8 +299,8 @@ func issue_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_pt
 // @param defending_army_id The id of the defending army
 @external
 func claim_bounties{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
-    target_realm_id: felt,
-    attacking_realm_id: felt,
+    target_realm_id: Uint256,
+    attacking_realm_id: Uint256,
     attacking_army_id: felt,
     defending_army_id: felt,
 ) -> () {
@@ -309,8 +309,8 @@ func claim_bounties{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_
     let (contract_address) = get_contract_address();
     // check the target realm has bounties on it currently
     let (count) = bounty_count.read(target_realm_id);
-    with_attr error_message("no bounties on this realm") {
-        assert is_le(count, 0) = 1;
+    with_attr error_message("No bounties on this realm") {
+        assert is_le(count, 0) = 0;
     }
 
     // DISCUSS: should you transfer from the staked realm or from the normal realm contract ?
@@ -323,7 +323,7 @@ func claim_bounties{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_
         contract_address=s_realm_contract_address,
         from_=caller_address,
         to=contract_address,
-        tokenId=Uint256(attacking_realm_id, 0),
+        tokenId=attacking_realm_id,
     );
 
     // calculate all the resources and lords that the contract has
@@ -332,20 +332,21 @@ func claim_bounties{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_
     );
 
     // attack the target of the bounty
+    // DISCUSS: will defending id will always be 0?
     let (combat_module_) = Module.get_module_address(ModuleIds.L06_Combat);
     let (result) = ICombat.initiate_combat(
         contract_address=combat_module_,
         attacking_army_id=attacking_army_id,
-        attacking_realm_id=Uint256(attacking_realm_id, 0),
+        attacking_realm_id=attacking_realm_id,
         defending_army_id=defending_army_id,
-        defending_realm_id=Uint256(target_realm_id, 0),
+        defending_realm_id=target_realm_id,
     );
-
-    // calculate all the resources and lords that the contract has
-    let (_, new_balance, _) = MercenaryLib.resources_balance(target_realm_id);
 
     // reward the total_bounty_amount and return the armies of the attacking realm
     if (result == CCombat.COMBAT_OUTCOME_ATTACKER_WINS) {
+        // calculate all the resources and lords that the contract has
+        let (_, new_balance, _) = MercenaryLib.resources_balance(target_realm_id);
+
         // calculate the amounts to be transferred then transfer
         MercenaryLib.transfer_bounties(target_realm_id);
         let (balance_difference: Uint256*) = alloc();
@@ -382,13 +383,16 @@ func claim_bounties{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_
         contract_address=s_realm_contract_address,
         from_=contract_address,
         to=caller_address,
-        tokenId=Uint256(attacking_realm_id, 0),
+        tokenId=attacking_realm_id,
     );
 
     return ();
 }
 
-// TODO: add description
+// @notice Transfer the developer fees to any address
+// @param destination_address The destination address for the fees
+// @param resources_ids_len The length of the resources_ids array
+// @param The ids of the resources that need to be transferred
 @external
 func transfer_dev_fees{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
     destination_address: felt, resources_ids_len: felt, resources_ids: Uint256*

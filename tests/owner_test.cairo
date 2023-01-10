@@ -16,10 +16,6 @@ from realms_contracts_git.contracts.settling_game.utils.game_structs import (
 )
 
 const RESOURCE_CONTRACT = 1;
-const LORDS_CONTRACT = 2;
-const S_REALM_CONTRACT = 3;
-const REALM_CONTRACT = 4;
-const COMBAT_MODULE = 5;
 const BOUNTY_COUNT_LIMIT = 6;
 const BOUNTY_DEADLINE_LIMIT = 7;
 const DEV_FEES_PERCENTAGE = 8;

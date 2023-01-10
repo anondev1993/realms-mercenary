@@ -8,30 +8,6 @@ from contracts.structures import Bounty
 from contracts.constants import IERC1155_RECEIVER_ID
 
 // -----------------------------------
-// Contracts
-// -----------------------------------
-
-@storage_var
-func realm_contract() -> (address: felt) {
-}
-
-@storage_var
-func staked_realm_contract() -> (address: felt) {
-}
-
-@storage_var
-func erc1155_contract() -> (address: felt) {
-}
-
-@storage_var
-func lords_contract() -> (address: felt) {
-}
-
-@storage_var
-func combat_module() -> (address: felt) {
-}
-
-// -----------------------------------
 // Bounties
 // -----------------------------------
 
@@ -64,11 +40,11 @@ func bounty_deadline_limit() -> (limit: felt) {
 }
 
 @storage_var
-func bounties(realm_id: felt, index: felt) -> (bounty: Bounty) {
+func bounties(realm_id: Uint256, index: felt) -> (bounty: Bounty) {
 }
 
 @storage_var
-func bounty_count(realm_id: felt) -> (count: felt) {
+func bounty_count(realm_id: Uint256) -> (count: felt) {
 }
 
 // -----------------------------------
