@@ -17,7 +17,7 @@
 <img src="imgs/mercenary-module.jpeg" width="90%" height="90%" alt="Prosper Empire">
 </p>
 
-# Introduction
+# Introduction 🏰
 
 Mercenary is a module built for the [Realms Settling Game](https://github.com/BibliothecaForAdventurers/realms-contracts). The Realms project is developed around the idea of composable modules. Any developer can write a module and propose it to the community.
 If the community decides to include it within the game, the module will receive write access to the other modules and the game expands.
