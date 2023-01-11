@@ -3,11 +3,7 @@
 // starkware
 from starkware.cairo.common.uint256 import Uint256
 from starkware.cairo.common.cairo_builtins import HashBuiltin
-from starkware.starknet.common.syscalls import (
-    get_caller_address,
-    get_contract_address,
-    get_block_timestamp,
-)
+from starkware.starknet.common.syscalls import get_contract_address, get_block_timestamp
 from starkware.cairo.common.alloc import alloc
 
 // mercenary
@@ -16,10 +12,7 @@ from contracts.storage import supportsInterface
 from contracts.structures import Bounty, BountyType
 
 // realms
-from realms_contracts_git.contracts.settling_game.utils.game_structs import (
-    ModuleIds,
-    ExternalContractIds,
-)
+from realms_contracts_git.contracts.settling_game.utils.game_structs import ExternalContractIds
 
 @contract_interface
 namespace IRealms {
@@ -48,9 +41,6 @@ namespace IERC1155 {
 }
 
 const MINT_AMOUNT = 100 * 10 ** 18;
-const REALM_CONTRACT = 121;
-const S_REALM_CONTRACT = 122;
-const COMBAT_MODULE = 123;
 const BOUNTY_AMOUNT = 5 * 10 ** 18;
 const TARGET_REALM_ID = 125;
 const BOUNTY_COUNT_LIMIT = 50;
@@ -168,11 +158,11 @@ func test_issue_lords_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, ran
 
     // account1 issues a new bounty
     %{ stop_prank_callable = start_prank(ids.account1, target_contract_address=context.self_address) %}
-    let (index) = issue_bounty(target_realm_id=TARGET_REALM_ID, bounty=bounty);
+    let (index) = issue_bounty(target_realm_id=Uint256(TARGET_REALM_ID, 0), bounty=bounty);
 
     // verify the bounty values in the storage
     %{
-        issued_bounty = load(context.self_address, "bounties", "Bounty", [ids.TARGET_REALM_ID, ids.index])                      
+        issued_bounty = load(context.self_address, "bounties", "Bounty", [ids.TARGET_REALM_ID, 0, ids.index])                      
         assert issued_bounty[0] == ids.account1, f'owner of the bounty {issued_bounty[0]} not equal to {ids.account1}'                     # owner
         assert issued_bounty[1] == ids.BOUNTY_AMOUNT, f'amount.low of the bounty {issued_bounty[1]} not equal to {ids.BOUNTY_AMOUNT}'      # amount.low 
         assert issued_bounty[2] == 0, f'amount.high of the bounty {issued_bounty[2]} not equal to {0}'                                     # amount.high
@@ -216,11 +206,11 @@ func test_issue_resources_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*,
 
     // issue new bounty
     %{ stop_prank_callable = start_prank(ids.account1, target_contract_address=context.self_address) %}
-    let (index) = issue_bounty(target_realm_id=TARGET_REALM_ID, bounty=bounty);
+    let (index) = issue_bounty(target_realm_id=Uint256(TARGET_REALM_ID, 0), bounty=bounty);
 
     // verify the bounty values in the storage
     %{
-        issued_bounty = load(context.self_address, "bounties", "Bounty", [ids.TARGET_REALM_ID, ids.index])                      
+        issued_bounty = load(context.self_address, "bounties", "Bounty", [ids.TARGET_REALM_ID, 0, ids.index])                      
         assert issued_bounty[0] == ids.account1, f'owner of the bounty {issued_bounty[0]} not equal to {ids.account1}'                     # owner
         assert issued_bounty[1] == ids.BOUNTY_AMOUNT, f'amount.low of the bounty {issued_bounty[1]} not equal to {ids.BOUNTY_AMOUNT}'      # amount.low 
         assert issued_bounty[2] == 0, f'amount.high of the bounty {issued_bounty[2]} not equal to {0}'                                     # amount.high
@@ -234,8 +224,9 @@ func test_issue_resources_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*,
 }
 
 @external
-func test_max_bounties_should_fail{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
-    ) {
+func test_max_bounties_should_revert{
+    syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr
+}() {
     alloc_locals;
     local lords_contract;
     local self_address;
@@ -257,7 +248,7 @@ func test_max_bounties_should_fail{syscall_ptr: felt*, pedersen_ptr: HashBuiltin
     // fill all the bounties slot for one realm
     %{
         for i in range(0, ids.BOUNTY_COUNT_LIMIT):
-            store(context.self_address, "bounties", [ids.account1, ids.BOUNTY_AMOUNT, 0, ids.deadline, 1, 0, 0], [ids.TARGET_REALM_ID, i])
+            store(context.self_address, "bounties", [ids.account1, ids.BOUNTY_AMOUNT, 0, ids.deadline, 1, 0, 0], [ids.TARGET_REALM_ID, 0, i])
     %}
 
     // give allowance of amount from this user to this contract
@@ -268,9 +259,9 @@ func test_max_bounties_should_fail{syscall_ptr: felt*, pedersen_ptr: HashBuiltin
     %{ stop_prank_callable() %}
 
     // expect the tx to revert when no more slots
-    %{ expect_revert(error_message="maximum number of bounties reached") %}
+    %{ expect_revert(error_message="Maximum number of bounties reached") %}
     %{ stop_prank_callable = start_prank(ids.account1, target_contract_address=context.self_address) %}
-    let (index) = issue_bounty(target_realm_id=TARGET_REALM_ID, bounty=bounty);
+    let (index) = issue_bounty(target_realm_id=Uint256(TARGET_REALM_ID, 0), bounty=bounty);
 
     return ();
 }
@@ -300,9 +291,9 @@ func test_replace_expired_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*,
     %{
         for i in range(0, ids.BOUNTY_COUNT_LIMIT):
             if i == 21:
-                store(context.self_address, "bounties", [ids.account1, ids.BOUNTY_AMOUNT, 0, 500, 1, 0, 0], [ids.TARGET_REALM_ID, i])
+                store(context.self_address, "bounties", [ids.account1, ids.BOUNTY_AMOUNT, 0, 500, 1, 0, 0], [ids.TARGET_REALM_ID, 0, i])
             else:
-                store(context.self_address, "bounties", [ids.account1, ids.BOUNTY_AMOUNT, 0, 1000, 1, 0, 0], [ids.TARGET_REALM_ID, i])
+                store(context.self_address, "bounties", [ids.account1, ids.BOUNTY_AMOUNT, 0, 1000, 1, 0, 0], [ids.TARGET_REALM_ID, 0, i])
     %}
 
     // jump forward in time so that some bounties are no more valid
@@ -317,12 +308,12 @@ func test_replace_expired_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*,
 
     // issue new bounty and check that the bounty took the slot of an expired bounty
     %{ stop_prank_callable = start_prank(ids.account1, target_contract_address=context.self_address) %}
-    let (index) = issue_bounty(target_realm_id=TARGET_REALM_ID, bounty=bounty);
+    let (index) = issue_bounty(target_realm_id=Uint256(TARGET_REALM_ID, 0), bounty=bounty);
     %{ stop_prank_callable() %}
     %{
         ## assert that the expired bounty at index 21 was replaced
         assert ids.index == 21, f'The index {ids.index} is not equal to 21'
-        issued_bounty = load(context.self_address, "bounties", "Bounty", [ids.TARGET_REALM_ID, 21])
+        issued_bounty = load(context.self_address, "bounties", "Bounty", [ids.TARGET_REALM_ID, 0, 21])
         assert issued_bounty[3] == ids.deadline, f'deadline of the bounty {issued_bounty[3]} not equal to {ids.deadline}'                  # deadline
 
         ## assert that the bounty owner received back his money
@@ -334,7 +325,7 @@ func test_replace_expired_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*,
 }
 
 @external
-func test_not_big_enough_delay_should_fail{
+func test_not_big_enough_delay_should_revert{
     syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr
 }() {
     alloc_locals;
@@ -363,9 +354,9 @@ func test_not_big_enough_delay_should_fail{
     %{ stop_prank_callable() %}
 
     // should fail because the deadline is not far away enough in the future (50 < 100)
-    %{ expect_revert(error_message="deadline not far enough in time") %}
+    %{ expect_revert(error_message="Deadline not far enough in time") %}
     %{ stop_prank_callable = start_prank(ids.account1, target_contract_address=context.self_address) %}
-    let (index) = issue_bounty(target_realm_id=TARGET_REALM_ID, bounty=bounty);
+    let (index) = issue_bounty(target_realm_id=Uint256(TARGET_REALM_ID, 0), bounty=bounty);
 
     return ();
 }

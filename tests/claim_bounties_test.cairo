@@ -1,21 +1,16 @@
 %lang starknet
 
-from starkware.cairo.common.uint256 import Uint256, uint256_sub
+// starkware
+from starkware.cairo.common.uint256 import Uint256
 from starkware.cairo.common.cairo_builtins import HashBuiltin
-from starkware.starknet.common.syscalls import (
-    get_caller_address,
-    get_contract_address,
-    get_block_timestamp,
-)
-from starkware.cairo.common.alloc import alloc
+from starkware.starknet.common.syscalls import get_contract_address
 
-from contracts.library import MercenaryLib
-
-from contracts.mercenary import issue_bounty, onERC1155BatchReceived, claim_bounties
+// mercenary
+from contracts.mercenary import onERC1155BatchReceived, claim_bounties
 from contracts.storage import supportsInterface
-from contracts.structures import Bounty, BountyType
+from contracts.structures import Bounty
 
-from realms_contracts_git.contracts.settling_game.utils.game_structs import RealmData
+// realms
 from realms_contracts_git.contracts.settling_game.utils.game_structs import (
     ModuleIds,
     ExternalContractIds,
@@ -111,11 +106,6 @@ func __setup__{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
 
 
         ## set local storage vars
-        store(context.self_address, "lords_contract", [context.lords_contract])
-        store(context.self_address, "erc1155_contract", [context.resources_contract])
-        store(context.self_address, "realm_contract", [context.realms_contract])
-        store(context.self_address, "staked_realm_contract", [context.s_realms_contract])
-        store(context.self_address, "combat_module", [context.combat_contract])
         store(context.self_address, "bounty_count_limit", [ids.BOUNTY_COUNT_LIMIT])
         store(context.self_address, "developer_fees_percentage", [1000])                               # 10% fees
 
@@ -167,25 +157,20 @@ func __setup__{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
 
 // check the difference in resources balance between before and after combat
 @external
-func test_claim_without_bounties{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
-    ) -> () {
+func test_claim_without_bounties_should_revert{
+    syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr
+}() -> () {
     // claim bounty
-    %{ stop_prank_callable = start_prank(context.account1, context.self_address) %}
+    %{
+        stop_prank_callable = start_prank(context.account1, context.self_address)
+        expect_revert(error_message="No bounties on this realm")
+    %}
     claim_bounties(
-        target_realm_id=TARGET_REALM_ID,
-        attacking_realm_id=ATTACKING_REALM_ID,
+        target_realm_id=Uint256(TARGET_REALM_ID, 0),
+        attacking_realm_id=Uint256(ATTACKING_REALM_ID, 0),
         attacking_army_id=ATTACKING_ARMY_ID,
         defending_army_id=DEFENDING_ARMY_ID,
     );
-    %{ stop_prank_callable() %}
-
-    %{
-        resources_amount = load(context.resources_contract, "ERC1155_balances", "felt", [2, 0, context.account1])
-        assert resources_amount[0] == 1*10**18, f'the resource balance should be equal to {1*10**18} but is {resources_amount[0]}'
-
-        resources_amount = load(context.resources_contract, "ERC1155_balances", "felt", [3, 0, context.account1])
-        assert resources_amount[0] == 1*10**18, f'the resource balance should be equal to {1*10**18} but is {resources_amount[0]}'
-    %}
 
     return ();
 }
@@ -202,64 +187,202 @@ func test_claim_with_bounties{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, ra
             if (i <= 9):
                 # 10 times
                 # lords bounties
-                store(context.self_address, "bounties", [1, ids.BOUNTY_AMOUNT, 0, 500, 1, 0, 0], [ids.TARGET_REALM_ID, i])
+                store(context.self_address, "bounties", [1, ids.BOUNTY_AMOUNT, 0, 500, 1, 0, 0], [ids.TARGET_REALM_ID, 0, i])
             if (i >= 10 and i < 40):
                 # 30 resource bounties
-                store(context.self_address, "bounties", [1, ids.BOUNTY_AMOUNT, 0, 1000, 0, 1, 0], [ids.TARGET_REALM_ID, i])
+                store(context.self_address, "bounties", [1, ids.BOUNTY_AMOUNT, 0, 1000, 0, 1, 0], [ids.TARGET_REALM_ID, 0, i])
             if (i>=40):
                 # 10 times
                 # resource bounties
-                store(context.self_address, "bounties", [1, ids.BOUNTY_AMOUNT, 0, 1000, 0, 2, 0], [ids.TARGET_REALM_ID, i])
+                store(context.self_address, "bounties", [1, ids.BOUNTY_AMOUNT, 0, 1000, 0, 2, 0], [ids.TARGET_REALM_ID, 0, i])
 
         # verify that the bounty is correct
-        bounty = load(context.self_address, "bounties", "Bounty", [ids.TARGET_REALM_ID, 12])
+        bounty = load(context.self_address, "bounties", "Bounty", [ids.TARGET_REALM_ID, 0, 12])
         assert bounty == [1, ids.BOUNTY_AMOUNT, 0, 1000, 0, 1, 0]
+
+        # set the number of bounties in storage
+        store(context.self_address, "bounty_count", [ids.BOUNTY_COUNT_LIMIT], [ids.TARGET_REALM_ID, 0])
     %}
 
     %{ stop_prank_callable = start_prank(context.account1, context.self_address) %}
     claim_bounties(
-        target_realm_id=TARGET_REALM_ID,
-        attacking_realm_id=ATTACKING_REALM_ID,
+        target_realm_id=Uint256(TARGET_REALM_ID, 0),
+        attacking_realm_id=Uint256(ATTACKING_REALM_ID, 0),
         attacking_army_id=ATTACKING_ARMY_ID,
         defending_army_id=DEFENDING_ARMY_ID,
     );
     %{ stop_prank_callable() %}
 
+    // verify bounty resets
     %{
         # verify that the bounty is removed after claim
         for i in range(0, ids.BOUNTY_COUNT_LIMIT):        
-            bounty = load(context.self_address, "bounties", "Bounty", [ids.TARGET_REALM_ID, i])
+            bounty = load(context.self_address, "bounties", "Bounty", [ids.TARGET_REALM_ID, 0, i])
             assert bounty == [0, 0, 0, 0, 0, 0, 0], f'bounty is {bounty}'
-
-        ## verify that the account1 received the new tokens
-        resources_amount = load(context.resources_contract, "ERC1155_balances", "felt", [1, 0, context.account1]) 
-        amount = 30*ids.BOUNTY_AMOUNT
-        # amount going to fees
-        amount -= divmod(amount, 10)[0]
-        assert resources_amount[0] == amount, f'resources amount for token id 1 should be {amount} but is {resources_amount}'
-
-        ## verify the received amounts for token id 2,0
-        resources_amount = load(context.resources_contract, "ERC1155_balances", "felt", [2, 0, context.account1]) 
-        # equal amount from bounties 
-        amount =  10*ids.BOUNTY_AMOUNT
-        # amount going to fees
-        amount -= divmod(amount, 10)[0]
-        # what was gained from winning combat (received token 2,0 and token 3,0 from combat module)
-        amount += 1*10**18
-        assert resources_amount[0] == amount, f'resources amount for token id 2 should be {amount} but is {resources_amount}'
     %}
 
-    // verify the emitted events for dev fees
+    // verify value transfers
+    %{
+        ## verify that account1 received amounts for lords
+        attacker_lords_amount_contract = load(context.lords_contract, "ERC20_balances", "felt", [context.account1])[0]
+        ## verify that this contract stored the right dev fees
+        dev_lords_amount_contract = load(context.self_address, "dev_fees_lords", "Uint256")[0]
+        # equal amount from bounties 
+        total_lords_amount =  10*ids.BOUNTY_AMOUNT
+        # amount going to fees
+        dev_lords_amount = divmod(total_lords_amount, 10)[0]
+        attacker_lords_amount = total_lords_amount - dev_lords_amount
+        assert attacker_lords_amount_contract == attacker_lords_amount, f'should be {attacker_lords_amount} but is {attacker_lords_amount_contract}'
+        assert dev_lords_amount_contract == dev_lords_amount, f'should be {dev_lords_amount} but is {dev_lords_amount_contract}'
+
+        ## verify that account1 received amounts for token id 1,0
+        attacker_resources1_amount_contract = load(context.resources_contract, "ERC1155_balances", "felt", [1, 0, context.account1])[0]
+        ## verify that this contract stored the right dev fees
+        dev_resources1_amount_contract = load(context.self_address, "dev_fees_resources", "Uint256", [1, 0])[0]
+        # equal amount from bounties 
+        resources1_amount =  ids.BOUNTY_AMOUNT
+        ## amount going to fees
+        # per bounty
+        dev_resources1_amount = divmod(resources1_amount, 10)[0]
+        # total (30 bounties)
+        dev_total_resources1_amount = 30*dev_resources1_amount
+
+        ## amount going to attacker
+        # per bounty
+        attacker_resources1_amount = resources1_amount - dev_resources1_amount
+        # total (30 bounties)
+        attacker_total_resources1_amount = 30*attacker_resources1_amount
+        # what was gained from winning combat (received token 2,0 and token 3,0 from combat module)
+        assert attacker_resources1_amount_contract == attacker_total_resources1_amount, f'should be {attacker_total_resources1_amount} but is {attacker_resources1_amount_contract}'
+        assert dev_resources1_amount_contract == dev_total_resources1_amount, f'should be {dev_total_resources1_amount} but is {dev_resources1_amount_contract}'
+
+        ## verify that account1 received amounts for token id 2,0
+        attacker_resources2_amount_contract = load(context.resources_contract, "ERC1155_balances", "felt", [2, 0, context.account1])[0]
+        ## verify that this contract stored the right dev fees
+        dev_resources2_amount_contract = load(context.self_address, "dev_fees_resources", "Uint256", [2, 0])[0]
+        # equal amount from bounties 
+        resources2_amount =  ids.BOUNTY_AMOUNT
+        ## amount going to fees
+        # per bounty
+        dev_resources2_amount = divmod(resources2_amount, 10)[0]
+        # total (10 bounties)
+        dev_total_resources2_amount = 10*dev_resources2_amount
+
+        ## amount going to attacker
+        # per bounty
+        attacker_resources2_amount = resources2_amount - dev_resources2_amount
+        # total (10 bounties)
+        attacker_total_resources2_amount = 10*attacker_resources2_amount
+        # what was gained from winning combat (received token 2,0 and token 3,0 from combat module)
+        attacker_total_resources2_amount += 1*10**18
+        assert attacker_resources2_amount_contract == attacker_total_resources2_amount, f'should be {attacker_total_resources2_amount} but is {attacker_resources2_amount_contract}'
+        assert dev_resources2_amount_contract == dev_total_resources2_amount, f'should be {dev_total_resources2_amount} but is {dev_resources2_amount_contract}'
+    %}
+
+    // verify the emitted events for claimed bounty
     %{
         # lords fees events = 10% of total lords amount
         (increase_total_lords_fees, _) = divmod(ids.BOUNTY_AMOUNT*10, 10)
         # resource fees events = 10% of each resource amount
         (increase_resource_fees, _) = divmod(ids.BOUNTY_AMOUNT, 10)
         expect_events(
-        {"name": "dev_fees_increase", "data": {"is_lords": 1, "resource_id": {"low": 0, "high": 0}, "added_amount": {"low": increase_total_lords_fees, "high": 0}}},
-        {"name": "dev_fees_increase", "data": {"is_lords": 0, "resource_id": {"low": 1, "high": 0}, "added_amount": {"low": increase_resource_fees, "high": 0}}},
-        {"name": "dev_fees_increase", "data": {"is_lords": 0, "resource_id": {"low": 2, "high": 0}, "added_amount": {"low": increase_resource_fees, "high": 0}}}
+        {"name": "BountyClaimed", 
+         "data": {
+            "target_realm_id": ids.TARGET_REALM_ID, 
+            "attacker_lords_amount": {"low": attacker_lords_amount, "high": 0}, 
+            "dev_lords_amount": {"low": dev_lords_amount, "high": 0}, 
+            "resources_ids": 30*[{"low": 1, "high": 0}] + 10*[{"low": 2, "high": 0}], 
+            "attacker_resources_amounts": 30*[{"low": attacker_resources1_amount, "high": 0}] + 10*[{"low": attacker_resources2_amount, "high": 0}], 
+            "dev_resources_amounts": 30*[{"low": dev_resources1_amount, "high": 0}] + 10*[{"low": dev_resources2_amount, "high": 0}], 
+        }}
         ),
+    %}
+
+    return ();
+}
+
+@external
+func test_claim_with_expired_bounties{
+    syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr
+}() -> () {
+    // setup bounties in mercenary contract
+    alloc_locals;
+    local self_address;
+    %{
+        ids.self_address = context.self_address
+        for i in range(0, ids.BOUNTY_COUNT_LIMIT):
+            if (i <= 9):
+                # 10 times
+                # lords bounties
+                store(context.self_address, "bounties", [context.account2, ids.BOUNTY_AMOUNT, 0, 500, 1, 0, 0], [ids.TARGET_REALM_ID, 0, i])
+            if (i >= 10 and i < 40):
+                # 30 resource bounties
+                store(context.self_address, "bounties", [context.account2, ids.BOUNTY_AMOUNT, 0, 1000, 0, 1, 0], [ids.TARGET_REALM_ID, 0, i])
+            if (i>=40):
+                # 10 times
+                # resource bounties
+                store(context.self_address, "bounties", [context.account2, ids.BOUNTY_AMOUNT, 0, 1000, 0, 2, 0], [ids.TARGET_REALM_ID, 0, i])
+
+        # verify that the bounty is correct
+        bounty = load(context.self_address, "bounties", "Bounty", [ids.TARGET_REALM_ID, 0, 12])
+        assert bounty == [context.account2, ids.BOUNTY_AMOUNT, 0, 1000, 0, 1, 0]
+
+        # set the number of bounties in storage
+        store(context.self_address, "bounty_count", [ids.BOUNTY_COUNT_LIMIT], [ids.TARGET_REALM_ID, 0])
+    %}
+
+    // go into the future to make all bounties expired
+    %{
+        stop_warp = roll(1001)
+        stop_prank_callable = start_prank(context.account1, context.self_address)
+    %}
+
+    claim_bounties(
+        target_realm_id=Uint256(TARGET_REALM_ID, 0),
+        attacking_realm_id=Uint256(ATTACKING_REALM_ID, 0),
+        attacking_army_id=ATTACKING_ARMY_ID,
+        defending_army_id=DEFENDING_ARMY_ID,
+    );
+    %{ stop_prank_callable() %}
+
+    // verify bounty resets
+    %{
+        # verify that the bounty is removed after claim
+        for i in range(0, ids.BOUNTY_COUNT_LIMIT):        
+            bounty = load(context.self_address, "bounties", "Bounty", [ids.TARGET_REALM_ID, 0, i])
+            assert bounty == [0, 0, 0, 0, 0, 0, 0], f'bounty is {bounty}'
+    %}
+
+    // value transfers
+    %{
+        ## verify that account2 received back amounts for lords
+        bounty_owner_lords_amount_contract = load(context.lords_contract, "ERC20_balances", "felt", [context.account2])[0]
+        ## verify that this contract didn't store any dev fees
+        dev_lords_amount_contract = load(context.self_address, "dev_fees_lords", "Uint256")[0]
+        assert bounty_owner_lords_amount_contract == 10*ids.BOUNTY_AMOUNT, f'should be {10*ids.BOUNTY_AMOUNT} but is {bounty_owner_lords_amount_contract}'
+        assert dev_lords_amount_contract == 0, f'should be {0} but is {dev_lords_amount_contract}'
+
+        ## verify that account2 received amounts for token id 1,0
+        bounty_owner_resources1_amount_contract = load(context.resources_contract, "ERC1155_balances", "felt", [1, 0, context.account2])[0]
+        ## verify that this contract stored the right dev fees
+        dev_resources1_amount_contract = load(context.self_address, "dev_fees_resources", "Uint256", [1, 0])[0]
+        assert bounty_owner_resources1_amount_contract == 30*ids.BOUNTY_AMOUNT, f'should be {30*ids.BOUNTY_AMOUNT} but is {bounty_owner_resources1_amount_contract}'
+        assert dev_resources1_amount_contract == 0, f'should be {0} but is {dev_resources1_amount_contract}'
+
+        ## verify that account2 received amounts for token id 2,0
+        bounty_owner_resources2_amount_contract = load(context.resources_contract, "ERC1155_balances", "felt", [2, 0, context.account2])[0]
+        ## verify that this contract stored the right dev fees
+        dev_resources2_amount_contract = load(context.self_address, "dev_fees_resources", "Uint256", [2, 0])[0]
+        assert bounty_owner_resources2_amount_contract == 10*ids.BOUNTY_AMOUNT, f'should be {10*ids.BOUNTY_AMOUNT} but is {bounty_owner_resources2_amount_contract}'
+        assert dev_resources2_amount_contract == 0, f'should be {0} but is {dev_resources2_amount_contract}'
+    %}
+
+    // verify the emitted events
+    %{
+        expect_events(
+        {"name": "BountyClaimed", 
+         "data": [ids.TARGET_REALM_ID, 0, 0, 0, 0, 0, 0, 0, 0]}
+        )
     %}
 
     return ();

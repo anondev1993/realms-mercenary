@@ -6,15 +6,15 @@ from starkware.cairo.common.uint256 import Uint256
 @contract_interface
 namespace IMercenary {
     func claim_bounties(
-        target_realm_id: felt,
-        attacking_realm_id: felt,
+        target_realm_id: Uint256,
+        attacking_realm_id: Uint256,
         attacking_army_id: felt,
         defending_army_id: felt,
     ) -> () {
     }
-    func remove_bounty(index: felt, target_realm_id: felt) -> () {
+    func remove_bounty(index: felt, target_realm_id: Uint256) -> () {
     }
-    func issue_bounty(target_realm_id: felt, bounty: Bounty) -> (index: felt) {
+    func issue_bounty(target_realm_id: Uint256, bounty: Bounty) -> (index: felt) {
     }
     func transfer_dev_fees(
         destination_address: felt, resources_ids_len: felt, resources_ids: Uint256*
@@ -40,7 +40,7 @@ namespace IMercenary {
     func view_bounty_deadline_limit() -> (bounty_deadline_limit: felt) {
     }
 
-    func view_bounty_count(target_realm_id: felt) -> (bounty_count: felt) {
+    func view_bounty_count(target_realm_id: Uint256) -> (bounty_count: felt) {
     }
 
     //

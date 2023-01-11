@@ -1,5 +1,6 @@
 %lang starknet
 
+// starkware
 from starkware.cairo.common.cairo_builtins import HashBuiltin
 from starkware.cairo.common.uint256 import Uint256
 from starkware.cairo.common.math import assert_nn_le
@@ -10,11 +11,6 @@ from cairo_contracts_git.src.openzeppelin.access.ownable.library import Ownable
 from contracts.structures import Bounty
 from contracts.constants import DEVELOPER_FEES_PRECISION
 from contracts.storage import (
-    realm_contract,
-    staked_realm_contract,
-    erc1155_contract,
-    lords_contract,
-    combat_module,
     developer_fees_percentage,
     bounty_count_limit,
     bounty_amount_limit_lords,
