@@ -9,10 +9,7 @@ from starkware.cairo.common.uint256 import Uint256
 from contracts.mercenary import remove_bounty
 
 // realms
-from realms_contracts_git.contracts.settling_game.utils.game_structs import (
-    ModuleIds,
-    ExternalContractIds,
-)
+from realms_contracts_git.contracts.settling_game.utils.game_structs import ExternalContractIds
 
 const MINT_AMOUNT = 0;
 const BOUNTY_AMOUNT = 5 * 10 ** 18;

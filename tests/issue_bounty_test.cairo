@@ -3,11 +3,7 @@
 // starkware
 from starkware.cairo.common.uint256 import Uint256
 from starkware.cairo.common.cairo_builtins import HashBuiltin
-from starkware.starknet.common.syscalls import (
-    get_caller_address,
-    get_contract_address,
-    get_block_timestamp,
-)
+from starkware.starknet.common.syscalls import get_contract_address, get_block_timestamp
 from starkware.cairo.common.alloc import alloc
 
 // mercenary
@@ -16,10 +12,7 @@ from contracts.storage import supportsInterface
 from contracts.structures import Bounty, BountyType
 
 // realms
-from realms_contracts_git.contracts.settling_game.utils.game_structs import (
-    ModuleIds,
-    ExternalContractIds,
-)
+from realms_contracts_git.contracts.settling_game.utils.game_structs import ExternalContractIds
 
 @contract_interface
 namespace IRealms {
@@ -48,9 +41,6 @@ namespace IERC1155 {
 }
 
 const MINT_AMOUNT = 100 * 10 ** 18;
-const REALM_CONTRACT = 121;
-const S_REALM_CONTRACT = 122;
-const COMBAT_MODULE = 123;
 const BOUNTY_AMOUNT = 5 * 10 ** 18;
 const TARGET_REALM_ID = 125;
 const BOUNTY_COUNT_LIMIT = 50;

@@ -11,7 +11,7 @@
   </a>
 </p>
 
-# Mercenary module for Realms
+# Mercenary module for Realms 💰
 
 <p align="center">
 <img src="imgs/mercenary-module.jpeg" width="90%" height="90%" alt="Prosper Empire">
