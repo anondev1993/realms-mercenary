@@ -293,8 +293,6 @@ func claim_bounties{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_
         assert is_le(count, 0) = 0;
     }
 
-    // DISCUSS: should you transfer from the staked realm or from the normal realm contract ?
-    // DISCUSS: in modules (buildings, combat, ...) needs to be staked, will that stay ?
     // temporarily transfer the command of the armies of the mercenary to the mercenary contract
     let (s_realm_contract_address) = Module.get_external_contract_address(
         ExternalContractIds.S_Realms
