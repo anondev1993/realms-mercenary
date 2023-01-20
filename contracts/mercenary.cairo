@@ -52,6 +52,7 @@ from contracts.interface.ICombat import ICombat
 
 // Openzeppelin
 from cairo_contracts_git.src.openzeppelin.access.ownable.library import Ownable
+from cairo_contracts_git.src.openzeppelin.upgrades.library import Proxy
 from cairo_contracts_git.src.openzeppelin.token.erc721.IERC721 import IERC721
 from cairo_contracts_git.src.openzeppelin.token.erc20.IERC20 import IERC20
 // Realms
@@ -70,11 +71,12 @@ from realms_contracts_git.contracts.settling_game.utils.game_structs import (
 // -----------------------------------
 
 //
-// Constructor
+// Initialize & upgrade
 //
 
-// @notice Mercenary constructor
-// @param owner The contract owner
+// @notice Mercenary initializer
+// @param owner Owner address
+// @proxy_admin: Proxy admin address
 // @param address_of_controller The address of the module controller
 // @param developer_fees_percentage_ The developer royalties
 // @param bounty_count_limit_ The max number of bounties on one realm at a time
@@ -85,9 +87,10 @@ from realms_contracts_git.contracts.settling_game.utils.game_structs import (
 // @param token_ids_resources_len The length of resource ids array
 // @param token_ids_resources The resource ids array
 
-@constructor
-func constructor{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
+@external
+func initializer{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
     owner: felt,
+    proxy_admin: felt,
     address_of_controller: felt,
     developer_fees_percentage_: felt,
     bounty_count_limit_: felt,
@@ -98,6 +101,10 @@ func constructor{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr
     token_ids_resources_len: felt,
     token_ids_resources: Uint256*,
 ) {
+    // DISCUSS: any reason to have a proxy_admin different from the owner?
+    // DISCUSS: example: only realms team can upgrade modules
+    // init proxy
+    Proxy.initializer(proxy_admin);
     // init owner
     Ownable.initializer(owner);
     // init module controller
@@ -117,6 +124,18 @@ func constructor{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr
         token_ids_resources,
         0,
     );
+    return ();
+}
+
+// @notice Set new proxy implementation
+// @dev Can only be set by the proxy admin
+// @param implementation: New implementation contract address
+@external
+func upgrade{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
+    implementation: felt
+) -> () {
+    Proxy.assert_only_admin();
+    Proxy._set_implementation_hash(implementation);
     return ();
 }
 
@@ -233,14 +252,13 @@ func issue_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_pt
         }
 
         let (data: felt*) = alloc();
-        assert data[0] = 0;
         IERC1155.safeTransferFrom(
             contract_address=erc1155_address,
             _from=caller_address,
             to=contract_address,
             id=bounty.type.resource_id,
             amount=bounty.amount,
-            data_len=1,
+            data_len=0,
             data=data,
         );
         tempvar syscall_ptr = syscall_ptr;
@@ -330,7 +348,6 @@ func claim_bounties{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_
         let (balance_difference: Uint256*) = alloc();
 
         let (data: felt*) = alloc();
-        assert data[0] = 0;
 
         MercenaryLib.calculate_balance_difference(
             old_balance_len, old_balance, new_balance, balance_difference, 0
@@ -345,7 +362,7 @@ func claim_bounties{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_
             ids=resources_ids,
             amounts_len=old_balance_len,
             amounts=balance_difference,
-            data_len=1,
+            data_len=0,
             data=data,
         );
         tempvar syscall_ptr = syscall_ptr;
@@ -392,7 +409,6 @@ func transfer_dev_fees{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_che
     let (contract_address) = get_contract_address();
 
     let (data: felt*) = alloc();
-    assert data[0] = 0;
 
     IERC1155.safeBatchTransferFrom(
         contract_address=erc1155_address,
@@ -402,7 +418,7 @@ func transfer_dev_fees{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_che
         ids=resources_ids,
         amounts_len=resources_ids_len,
         amounts=dev_resource_amounts,
-        data_len=1,
+        data_len=0,
         data=data,
     );
 
