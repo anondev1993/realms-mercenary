@@ -9,7 +9,7 @@ from starkware.cairo.common.math import assert_nn_le
 from cairo_contracts_git.src.openzeppelin.access.ownable.library import Ownable
 
 from contracts.structures import Bounty
-from contracts.constants import DEVELOPER_FEES_PRECISION
+from contracts.constants import FEES_PRECISION
 from contracts.storage import (
     developer_fees_percentage,
     bounty_count_limit,
@@ -30,12 +30,14 @@ func set_developer_fees_percentage{syscall_ptr: felt*, pedersen_ptr: HashBuiltin
     Ownable.assert_only_owner();
 
     with_attr error_message("Developer fees too high") {
-        assert_nn_le(developer_fees_percentage_, DEVELOPER_FEES_PRECISION);
+        assert_nn_le(developer_fees_percentage_, FEES_PRECISION);
     }
 
     developer_fees_percentage.write(developer_fees_percentage_);
     return ();
 }
+
+// TODO: create setter for cleaner fees
 
 // TODO: check what happens if you decrease the count limit while there are still bounties
 @external

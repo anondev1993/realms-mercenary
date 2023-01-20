@@ -19,7 +19,7 @@ from starkware.cairo.common.alloc import alloc
 
 // Mercenary
 from contracts.structures import Bounty, BountyType
-from contracts.events import BountyClaimed
+from contracts.events import BountiesClaimed
 from contracts.storage import (
     developer_fees_percentage,
     bounty_amount_limit_resources,
@@ -29,7 +29,7 @@ from contracts.storage import (
     dev_fees_lords,
     dev_fees_resources,
 )
-from contracts.constants import DEVELOPER_FEES_PRECISION
+from contracts.constants import FEES_PRECISION
 
 // Openzeppelin
 from cairo_contracts_git.src.openzeppelin.token.erc20.IERC20 import IERC20
@@ -99,7 +99,14 @@ namespace MercenaryLib {
         }
 
         if (is_le(current_bounty.deadline, current_block) == 1) {
-            transfer_back_bounty(lords_address, erc1155_address, contract_address, current_bounty);
+            transfer_back_bounty(
+                lords_address,
+                erc1155_address,
+                contract_address,
+                current_bounty.type,
+                current_bounty.owner,
+                current_bounty.amount,
+            );
             // dont increase count here because we replace an existing bounty
             bounties.write(target_realm_id, index, new_bounty);
             return (index=index);
@@ -121,13 +128,20 @@ namespace MercenaryLib {
     // @param lords_address The address of the lords erc20 contract
     // @param erc1155_address The address of the resources erc1155 contract
     // @param contract_address The address of the mercenary contract
-    // @param bounty The bounty
+    // @param bounty_type The bounty type
+    // @param bounty_owner The bounty owner
+    // @param bounty_amount The amount to be transferred
     func transfer_back_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
-        lords_address: felt, erc1155_address: felt, contract_address: felt, bounty: Bounty
+        lords_address: felt,
+        erc1155_address: felt,
+        contract_address: felt,
+        bounty_type: BountyType,
+        bounty_owner: felt,
+        bounty_amount: Uint256,
     ) -> () {
-        if (bounty.type.is_lords == 1) {
+        if (bounty_type.is_lords == 1) {
             // if lords
-            IERC20.transfer(lords_address, bounty.owner, bounty.amount);
+            IERC20.transfer(lords_address, bounty_owner, bounty_amount);
             tempvar syscall_ptr = syscall_ptr;
             tempvar range_check_ptr = range_check_ptr;
         } else {
@@ -137,9 +151,9 @@ namespace MercenaryLib {
             IERC1155.safeTransferFrom(
                 erc1155_address,
                 contract_address,
-                bounty.owner,
-                bounty.type.resource_id,
-                bounty.amount,
+                bounty_owner,
+                bounty_type.resource_id,
+                bounty_amount,
                 1,
                 data,
             );
@@ -328,7 +342,7 @@ namespace MercenaryLib {
         bounty_count.write(target_realm_id, 0);
 
         // emit event
-        BountyClaimed.emit(
+        BountiesClaimed.emit(
             target_realm_id=target_realm_id,
             attacker_lords_amount=attacker_lords,
             dev_lords_amount=dev_lords,
@@ -340,6 +354,137 @@ namespace MercenaryLib {
             dev_resources_amounts=dev_resources_amounts,
         );
         return ();
+    }
+
+    // @notice Goes over all bounties of a target realm to:
+    // @notice - sum up the total lords amount
+    // @notice - create an array of resource ids and amounts for both attacker and dev
+    // @notice - transfer back the tokens in an expired bounty
+    // @param resources_ids The array of resources ids of all bounties
+    // @param attacker_resources_amounts The array of resources amounts going to attacker
+    // @param dev_resources_amounts The array of resources amounts going to the developer
+    // @param target_realm_id The target realm id
+    // @param array_index The current highest index of constructed arrays
+    // @param index Index used for recursion
+    // @param bounty_count_limit The max number of bounties on one realm at a time
+    // @param fees_percentage The fees percentage
+    // @param lords_address The address of the lords erc20 contract
+    // @param erc1155_address The address of the resources erc1155 contract
+    // @param contract_address The address of the mercenary contract
+    // @param current_block The current block
+    // @return sum_of_lords Returns the total sum of lords in all bounties
+    // @return resources_ids_len Returns the length of the resources_ids array
+    func clean_and_transfer_back_expired{
+        syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr
+    }(
+        resources_ids: Uint256*,
+        bounty_owner_resources_amounts: Uint256*,
+        cleaner_resources_amounts: Uint256*,
+        target_realm_id: Uint256,
+        array_index: felt,
+        index: felt,
+        bounty_count_limit: felt,
+        fees_percentage: felt,
+        lords_address: felt,
+        erc1155_address: felt,
+        contract_address: felt,
+        current_block: felt,
+    ) -> (sum_of_cleaner_lords: Uint256, resources_ids_len: felt) {
+        alloc_locals;
+        // bounty_count_limit
+        if (index == bounty_count_limit) {
+            let sum_of_rest = Uint256(0, 0);
+            return (sum_of_cleaner_lords=sum_of_rest, resources_ids_len=array_index);
+        }
+        let (bounty) = bounties.read(target_realm_id, index);
+
+        // if there is no owner, means that there is no bounty so continue
+        local has_owner = is_not_zero(bounty.owner);
+        if (has_owner == 0) {
+            return clean_and_transfer_back_expired(
+                resources_ids,
+                bounty_owner_resources_amounts,
+                cleaner_resources_amounts,
+                target_realm_id,
+                array_index,
+                index + 1,
+                bounty_count_limit,
+                fees_percentage,
+                lords_address,
+                erc1155_address,
+                contract_address,
+                current_block,
+            );
+        }
+
+        // if bounty is expired transfer back and don't sum
+        if (is_le(bounty.deadline, current_block) == 1) {
+            // calculate cleaner fees
+            let (bounty_owner_amount, cleaner_fees) = divide_fees(bounty.amount, fees_percentage);
+
+            // transfer back bounty to owner
+            transfer_back_bounty(
+                lords_address,
+                erc1155_address,
+                contract_address,
+                bounty.type,
+                bounty.owner,
+                bounty_owner_amount,
+            );
+            // reset bounty to 0
+            bounties.write(
+                target_realm_id, index, Bounty(0, Uint256(0, 0), 0, BountyType(0, Uint256(0, 0)))
+            );
+
+            if (bounty.type.is_lords == 1) {
+                // if lords
+                // sum the cleaner fees
+                let (sum_of_rest, resources_ids_len) = clean_and_transfer_back_expired(
+                    resources_ids,
+                    bounty_owner_resources_amounts,
+                    cleaner_resources_amounts,
+                    target_realm_id,
+                    array_index,
+                    index + 1,
+                    bounty_count_limit,
+                    fees_percentage,
+                    lords_address,
+                    erc1155_address,
+                    contract_address,
+                    current_block,
+                );
+                let (sum_of_rest, _) = uint256_add(sum_of_rest, cleaner_fees);
+                // reset bounty to 0
+
+                return (sum_of_cleaner_lords=sum_of_rest, resources_ids_len=resources_ids_len);
+            } else {
+                // if resources populate array of cleaner fees and resource ids
+                assert resources_ids[array_index] = bounty.type.resource_id;
+                assert cleaner_resources_amounts[array_index] = cleaner_fees;
+                assert bounty_owner_resources_amounts[array_index] = bounty_owner_amount;
+
+                // reset bounty to 0
+                bounties.write(
+                    target_realm_id,
+                    index,
+                    Bounty(0, Uint256(0, 0), 0, BountyType(0, Uint256(0, 0))),
+                );
+                return clean_and_transfer_back_expired(
+                    resources_ids,
+                    bounty_owner_resources_amounts,
+                    cleaner_resources_amounts,
+                    target_realm_id,
+                    array_index + 1,
+                    index + 1,
+                    bounty_count_limit,
+                    fees_percentage,
+                    lords_address,
+                    erc1155_address,
+                    contract_address,
+                    current_block,
+                );
+            }
+        }
     }
 
     // @notice Goes over all bounties of a target realm to:
@@ -384,10 +529,36 @@ namespace MercenaryLib {
         }
         let (bounty) = bounties.read(target_realm_id, index);
 
+        // if there is no owner, means that there is no bounty so continue
+        local has_owner = is_not_zero(bounty.owner);
+        if (has_owner == 0) {
+            return collect_tokens_and_transfer_back_expired(
+                resources_ids,
+                attacker_resources_amounts,
+                dev_resources_amounts,
+                target_realm_id,
+                array_index,
+                index + 1,
+                bounty_count_limit,
+                fees_percentage,
+                lords_address,
+                erc1155_address,
+                contract_address,
+                current_block,
+            );
+        }
+
         // if bounty is expired transfer back and don't sum
         if (is_le(bounty.deadline, current_block) == 1) {
             // transfer back bounty to owner
-            transfer_back_bounty(lords_address, erc1155_address, contract_address, bounty);
+            transfer_back_bounty(
+                lords_address,
+                erc1155_address,
+                contract_address,
+                bounty.type,
+                bounty.owner,
+                bounty.amount,
+            );
             // reset bounty to 0
             bounties.write(
                 target_realm_id, index, Bounty(0, Uint256(0, 0), 0, BountyType(0, Uint256(0, 0)))
@@ -411,11 +582,9 @@ namespace MercenaryLib {
                 current_block,
             );
         }
-
         // if "is_lords" is zero there is a bounty.owner, then it is a resource bounty
-        local has_owner = is_not_zero(bounty.owner);
-        if (has_owner == 0) {
-            return collect_tokens_and_transfer_back_expired(
+        if (bounty.type.is_lords == 1) {
+            let (sum_of_rest, resources_ids_len) = collect_tokens_and_transfer_back_expired(
                 resources_ids,
                 attacker_resources_amounts,
                 dev_resources_amounts,
@@ -429,63 +598,42 @@ namespace MercenaryLib {
                 contract_address,
                 current_block,
             );
+            let (sum_of_rest, _) = uint256_add(sum_of_rest, bounty.amount);
+            // reset bounty to 0
+            bounties.write(
+                target_realm_id, index, Bounty(0, Uint256(0, 0), 0, BountyType(0, Uint256(0, 0)))
+            );
+            return (sum_of_lords=sum_of_rest, resources_ids_len=resources_ids_len);
         } else {
-            if (bounty.type.is_lords == 1) {
-                let (sum_of_rest, resources_ids_len) = collect_tokens_and_transfer_back_expired(
-                    resources_ids,
-                    attacker_resources_amounts,
-                    dev_resources_amounts,
-                    target_realm_id,
-                    array_index,
-                    index + 1,
-                    bounty_count_limit,
-                    fees_percentage,
-                    lords_address,
-                    erc1155_address,
-                    contract_address,
-                    current_block,
-                );
-                let (sum_of_rest, _) = uint256_add(sum_of_rest, bounty.amount);
-                // reset bounty to 0
-                bounties.write(
-                    target_realm_id,
-                    index,
-                    Bounty(0, Uint256(0, 0), 0, BountyType(0, Uint256(0, 0))),
-                );
-                return (sum_of_lords=sum_of_rest, resources_ids_len=resources_ids_len);
-            } else {
-                assert resources_ids[array_index] = bounty.type.resource_id;
-                // divide between attacker amount and dev amount
-                let (attacker_fees, dev_fees) = divide_fees(bounty.amount, fees_percentage);
-                assert dev_resources_amounts[array_index] = dev_fees;
+            assert resources_ids[array_index] = bounty.type.resource_id;
+            // divide between attacker amount and dev amount
+            let (attacker_fees, dev_fees) = divide_fees(bounty.amount, fees_percentage);
+            assert dev_resources_amounts[array_index] = dev_fees;
 
-                // increment the current lords dev fees
-                let (current_dev_fees) = dev_fees_resources.read(bounty.type.resource_id);
-                let (new_dev_fees, _) = uint256_add(current_dev_fees, dev_fees);
-                dev_fees_resources.write(bounty.type.resource_id, new_dev_fees);
+            // increment the current lords dev fees
+            let (current_dev_fees) = dev_fees_resources.read(bounty.type.resource_id);
+            let (new_dev_fees, _) = uint256_add(current_dev_fees, dev_fees);
+            dev_fees_resources.write(bounty.type.resource_id, new_dev_fees);
 
-                assert attacker_resources_amounts[array_index] = attacker_fees;
-                // reset bounty to 0
-                bounties.write(
-                    target_realm_id,
-                    index,
-                    Bounty(0, Uint256(0, 0), 0, BountyType(0, Uint256(0, 0))),
-                );
-                return collect_tokens_and_transfer_back_expired(
-                    resources_ids,
-                    attacker_resources_amounts,
-                    dev_resources_amounts,
-                    target_realm_id,
-                    array_index + 1,
-                    index + 1,
-                    bounty_count_limit,
-                    fees_percentage,
-                    lords_address,
-                    erc1155_address,
-                    contract_address,
-                    current_block,
-                );
-            }
+            assert attacker_resources_amounts[array_index] = attacker_fees;
+            // reset bounty to 0
+            bounties.write(
+                target_realm_id, index, Bounty(0, Uint256(0, 0), 0, BountyType(0, Uint256(0, 0)))
+            );
+            return collect_tokens_and_transfer_back_expired(
+                resources_ids,
+                attacker_resources_amounts,
+                dev_resources_amounts,
+                target_realm_id,
+                array_index + 1,
+                index + 1,
+                bounty_count_limit,
+                fees_percentage,
+                lords_address,
+                erc1155_address,
+                contract_address,
+                current_block,
+            );
         }
     }
 
@@ -519,22 +667,22 @@ namespace MercenaryLib {
         return (Uint256(low=low, high=high),);
     }
 
-    // @notice Divide the bounty amount between the attacker and the devs
+    // @notice Divide the bounty amount between the attacker and the fees (dev or cleaner)
     // @param bounty_amount The amount of the bounty
     // @param fees_percentage The fees percentage
     // @return attacker_fees The amount that goes to the attacker
-    // @return dev_fees The amount that goes to the devs
+    // @return fees The amount reserved as fees
     func divide_fees{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
         bounty_amount: Uint256, fees_percentage: felt
-    ) -> (attacker_fees: Uint256, dev_fees: Uint256) {
-        // convert felt DEVELOPER_FEES_PRECISION into uint
+    ) -> (attacker_fees: Uint256, fees: Uint256) {
+        // convert felt FEES_PRECISION into uint
         // DISCUSS: better to have them directly as Uint256 ? we know they will always be max 10_000
-        let (developer_fees_precision_uint) = felt_to_uint256(DEVELOPER_FEES_PRECISION);
+        let (fees_precision_uint) = felt_to_uint256(FEES_PRECISION);
         let (fees_percentage_uint) = felt_to_uint256(fees_percentage);
-        let (dev_fees, _) = uint256_mul(bounty_amount, fees_percentage_uint);
-        let (dev_fees, _) = uint256_unsigned_div_rem(dev_fees, developer_fees_precision_uint);
-        let (attacker_fees) = uint256_sub(bounty_amount, dev_fees);
-        return (attacker_fees=attacker_fees, dev_fees=dev_fees);
+        let (fees, _) = uint256_mul(bounty_amount, fees_percentage_uint);
+        let (fees, _) = uint256_unsigned_div_rem(fees, fees_precision_uint);
+        let (attacker_fees) = uint256_sub(bounty_amount, fees);
+        return (attacker_fees=attacker_fees, fees=fees);
     }
 
     // @notice Populates an array with the amounts reserved for the devs for each resource id

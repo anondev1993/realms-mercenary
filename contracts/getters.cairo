@@ -16,6 +16,8 @@ from contracts.storage import (
     bounty_count,
 )
 
+// TODO: add cleaner fees
+
 @view
 func view_developer_fees_percentage{
     syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr

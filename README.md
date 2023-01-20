@@ -80,9 +80,10 @@ A bounty is composed of:
 | remove_bounty  | index, target_realm_id                                                    | Removes a certain bounty, needs the index of the bounty and the target Realm id                                                                                                                                                              |
 | claim_bounties | target_realm_id, attacking_realm_id, attacking_army_id, defending_army_id | Attacks another realm through the mercenary contract, transfers the attacker’s Realm to the contract, initiates a combat with the target Realm, then transfers back the NFT in addition to the pillaged resources and claimed bounty amounts |
 
-## Sequence Diagram 📜
+## Sequence Diagrams 📜
 
-![Untitled](imgs/sequence-diagram.png)
+![Untitled](imgs/issue-bounty-sequence-diagram.png)
+![Untitled](imgs/claim-bounties-sequence-diagram.png)
 
 ## Royalties 👨‍💻
 
