@@ -133,14 +133,13 @@ namespace MercenaryLib {
         } else {
             // if resources
             let (data: felt*) = alloc();
-            assert data[0] = 0;
             IERC1155.safeTransferFrom(
                 erc1155_address,
                 contract_address,
                 bounty.owner,
                 bounty.type.resource_id,
                 bounty.amount,
-                1,
+                0,
                 data,
             );
             tempvar syscall_ptr = syscall_ptr;
@@ -301,8 +300,6 @@ namespace MercenaryLib {
         }
 
         let (data: felt*) = alloc();
-        assert data[0] = 0;
-
         let (erc1155_address) = Module.get_external_contract_address(ExternalContractIds.Resources);
         // if the array has been populated, batch transfer
         if (is_le(0, resources_ids_len) == 1) {
@@ -314,7 +311,7 @@ namespace MercenaryLib {
                 ids=resources_ids,
                 amounts_len=resources_ids_len,
                 amounts=attacker_resources_amounts,
-                data_len=1,
+                data_len=0,
                 data=data,
             );
             tempvar syscall_ptr = syscall_ptr;
