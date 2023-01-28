@@ -79,7 +79,7 @@ from realms_contracts_git.contracts.settling_game.utils.game_structs import (
 
 // @notice Mercenary initializer
 // @param owner Owner address
-// @param proxy_admin: Proxy admin address
+// @proxy_admin: Proxy admin address
 // @param address_of_controller The address of the module controller
 // @param cleaner_fees_percentage_ The cleaner fees percentage
 // @param developer_fees_percentage_ The developer fees percentage
