@@ -11,6 +11,7 @@ from cairo_contracts_git.src.openzeppelin.access.ownable.library import Ownable
 from contracts.structures import Bounty
 from contracts.constants import FEES_PRECISION
 from contracts.storage import (
+    cleaner_fees_percentage,
     developer_fees_percentage,
     bounty_count_limit,
     bounty_amount_limit_lords,
@@ -37,7 +38,22 @@ func set_developer_fees_percentage{syscall_ptr: felt*, pedersen_ptr: HashBuiltin
     return ();
 }
 
-// TODO: create setter for cleaner fees
+// @notice Sets the percentage of cleaner fees
+// @dev The fees percentage is limited to 10_000 (fee precision)
+// @param Fees percentage
+@external
+func set_cleaner_fees_percentage{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
+    cleaner_fees_percentage_: felt
+) -> () {
+    Ownable.assert_only_owner();
+
+    with_attr error_message("Cleaner fees too high") {
+        assert_nn_le(cleaner_fees_percentage_, FEES_PRECISION);
+    }
+
+    cleaner_fees_percentage.write(cleaner_fees_percentage_);
+    return ();
+}
 
 // TODO: check what happens if you decrease the count limit while there are still bounties
 @external

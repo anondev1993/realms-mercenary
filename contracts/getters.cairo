@@ -7,6 +7,7 @@ from starkware.cairo.common.uint256 import Uint256
 // mercenary
 from contracts.structures import Bounty
 from contracts.storage import (
+    cleaner_fees_percentage,
     developer_fees_percentage,
     bounty_count_limit,
     bounty_amount_limit_lords,
@@ -16,7 +17,12 @@ from contracts.storage import (
     bounty_count,
 )
 
-// TODO: add cleaner fees
+@view
+func view_cleaner_fees_percentage{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
+    ) -> (cleaner_fees_percentage: felt) {
+    let (cleaner_fees_percentage_) = cleaner_fees_percentage.read();
+    return (cleaner_fees_percentage=cleaner_fees_percentage_);
+}
 
 @view
 func view_developer_fees_percentage{

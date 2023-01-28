@@ -121,3 +121,4 @@ protostar test
 | claim_bounties    | ✅                  |
 | remove_bounty     | ✅                  |
 | transfer_dev_fees | ✅                  |
+| clean_bounties    | ✅                  |

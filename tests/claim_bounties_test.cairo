@@ -333,7 +333,7 @@ func test_claim_with_expired_bounties{
 
     // go into the future to make all bounties expired
     %{
-        stop_warp = roll(1001)
+        stop_roll = roll(1001)
         stop_prank_callable = start_prank(context.account1, context.self_address)
     %}
 
