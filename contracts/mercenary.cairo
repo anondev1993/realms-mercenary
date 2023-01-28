@@ -8,15 +8,16 @@ from starkware.starknet.common.syscalls import (
     get_contract_address,
     get_block_number,
 )
-from starkware.cairo.common.uint256 import Uint256, assert_uint256_le
+from starkware.cairo.common.uint256 import Uint256, assert_uint256_le, uint256_lt
 from starkware.cairo.common.alloc import alloc
 
 // Mercenary
-from contracts.structures import Bounty, BountyType
-from contracts.events import BountyIssued
+from contracts.structures import Bounty, BountyType, CleanedBounty
+from contracts.events import BountyIssued, BountiesCleaned, DevFeesTransferred
 from contracts.library import MercenaryLib
 from contracts.storage import (
     developer_fees_percentage,
+    cleaner_fees_percentage,
     bounty_count_limit,
     bounty_amount_limit_lords,
     bounty_amount_limit_resources,
@@ -26,6 +27,7 @@ from contracts.storage import (
     dev_fees_lords,
 )
 from contracts.getters import (
+    view_cleaner_fees_percentage,
     view_developer_fees_percentage,
     view_bounty_count_limit,
     view_bounty_amount_limit_lords,
@@ -36,6 +38,7 @@ from contracts.getters import (
 )
 
 from contracts.setters import (
+    set_cleaner_fees_percentage,
     set_developer_fees_percentage,
     set_bounty_count_limit,
     set_bounty_amount_limit_lords,
@@ -44,7 +47,7 @@ from contracts.setters import (
 )
 
 from contracts.constants import (
-    DEVELOPER_FEES_PRECISION,
+    FEES_PRECISION,
     ON_ERC1155_RECEIVED_SELECTOR,
     ON_ERC1155_BATCH_RECEIVED_SELECTOR,
 )
@@ -78,7 +81,8 @@ from realms_contracts_git.contracts.settling_game.utils.game_structs import (
 // @param owner Owner address
 // @proxy_admin: Proxy admin address
 // @param address_of_controller The address of the module controller
-// @param developer_fees_percentage_ The developer royalties
+// @param cleaner_fees_percentage_ The cleaner fees percentage
+// @param developer_fees_percentage_ The developer fees percentage
 // @param bounty_count_limit_ The max number of bounties on one realm at a time
 // @param bounty_amount_limit_lords_ The minimum lords amount for a bounty
 // @param bounty_deadline_limit_ The min lifetime of a bounty
@@ -92,6 +96,7 @@ func initializer{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr
     owner: felt,
     proxy_admin: felt,
     address_of_controller: felt,
+    cleaner_fees_percentage_: felt,
     developer_fees_percentage_: felt,
     bounty_count_limit_: felt,
     bounty_amount_limit_lords_: Uint256,
@@ -109,9 +114,14 @@ func initializer{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr
     Ownable.initializer(owner);
     // init module controller
     Module.initializer(address_of_controller);
+    // fees
     with_attr error_message("Developer fee percentage higher than 100%") {
-        assert_le_felt(developer_fees_percentage_, DEVELOPER_FEES_PRECISION);
+        assert_le_felt(developer_fees_percentage_, FEES_PRECISION);
     }
+    with_attr error_message("Cleaner fee percentage higher than 100%") {
+        assert_le_felt(cleaner_fees_percentage_, FEES_PRECISION);
+    }
+    cleaner_fees_percentage.write(cleaner_fees_percentage_);
     developer_fees_percentage.write(developer_fees_percentage_);
     bounty_count_limit.write(bounty_count_limit_);
     bounty_amount_limit_lords.write(bounty_amount_limit_lords_);
@@ -136,45 +146,6 @@ func upgrade{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
 ) -> () {
     Proxy.assert_only_admin();
     Proxy._set_implementation_hash(implementation);
-    return ();
-}
-
-// @notice Allows the owner of a bounty to remove it and transfer back the amount of the bounty
-// @param index Index of the bounty
-// @param target_realm_id Id of the target realm
-@external
-func remove_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
-    index: felt, target_realm_id: Uint256
-) -> () {
-    alloc_locals;
-    let (caller_address) = get_caller_address();
-    let (contract_address) = get_contract_address();
-
-    let (erc1155_address) = Module.get_external_contract_address(ExternalContractIds.Resources);
-    let (lords_address) = Module.get_external_contract_address(ExternalContractIds.Lords);
-
-    let (bounty) = bounties.read(target_realm_id, index);
-
-    // assert that there is a bounty at that location
-    with_attr error_message("No bounty on that index") {
-        assert_not_zero(bounty.owner);
-    }
-
-    // assert that caller is the owner
-    with_attr error_message("Only owner of the bounty can remove it") {
-        assert bounty.owner = caller_address;
-    }
-
-    // transfer back the bounty
-    MercenaryLib.transfer_back_bounty(lords_address, erc1155_address, contract_address, bounty);
-
-    // decrement bounty counter
-    MercenaryLib.decrease_bounty_count(target_realm_id);
-
-    // set the bounty to 0 in the list
-    bounties.write(
-        target_realm_id, index, Bounty(0, Uint256(0, 0), 0, BountyType(0, Uint256(0, 0)))
-    );
     return ();
 }
 
@@ -287,6 +258,47 @@ func issue_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_pt
     return (index=index);
 }
 
+// @notice Allows the owner of a bounty to remove it and transfer back the amount of the bounty
+// @param index Index of the bounty
+// @param target_realm_id Id of the target realm
+@external
+func remove_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
+    index: felt, target_realm_id: Uint256
+) -> () {
+    alloc_locals;
+    let (caller_address) = get_caller_address();
+    let (contract_address) = get_contract_address();
+
+    let (erc1155_address) = Module.get_external_contract_address(ExternalContractIds.Resources);
+    let (lords_address) = Module.get_external_contract_address(ExternalContractIds.Lords);
+
+    let (bounty) = bounties.read(target_realm_id, index);
+
+    // assert that there is a bounty at that location
+    with_attr error_message("No bounty on that index") {
+        assert_not_zero(bounty.owner);
+    }
+
+    // assert that caller is the owner
+    with_attr error_message("Only owner of the bounty can remove it") {
+        assert bounty.owner = caller_address;
+    }
+
+    // transfer back the bounty
+    MercenaryLib.transfer_back_bounty(
+        lords_address, erc1155_address, contract_address, bounty.type, bounty.owner, bounty.amount
+    );
+
+    // decrement bounty counter
+    MercenaryLib.decrease_bounty_count(target_realm_id);
+
+    // set the bounty to 0 in the list
+    bounties.write(
+        target_realm_id, index, Bounty(0, Uint256(0, 0), 0, BountyType(0, Uint256(0, 0)))
+    );
+    return ();
+}
+
 // @notice Claim the bounty on the target realm by performing combat on the
 // @notice enemy realm
 // @dev The attacking realm must have approved the transfer of his realm
@@ -384,6 +396,110 @@ func claim_bounties{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_
     return ();
 }
 
+// @notice Removes all bounties that are expired and receives a % of the expired bounties amount
+// defined by cleaner_fees_percentage
+// @param target_realm_id The target realm id
+@external
+func clean_bounties{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
+    target_realm_id: Uint256
+) -> () {
+    // go over all bounties and transfers back the ones that are expired
+    alloc_locals;
+    let (bounty_count_) = bounty_count.read(target_realm_id);
+    with_attr error_message("There are no bounties on this realm") {
+        assert_not_zero(bounty_count_);
+    }
+
+    // syscalls
+    let (caller_address) = get_caller_address();
+    let (contract_address) = get_contract_address();
+    let (current_block) = get_block_number();
+
+    // storage
+    let (fees_percentage) = cleaner_fees_percentage.read();
+    let (count_limit) = bounty_count_limit.read();
+
+    // external contracts
+    let (lords_address) = Module.get_external_contract_address(ExternalContractIds.Lords);
+    let (erc1155_address) = Module.get_external_contract_address(ExternalContractIds.Resources);
+
+    // cleaned bounties for the event
+    let (local cleaned_bounties: CleanedBounty*) = alloc();
+    // cleaner resources id and amounts for the batch transfer
+    let (local cleaner_resources_amounts: Uint256*) = alloc();
+    let (local cleaner_resources_ids: Uint256*) = alloc();
+
+    // go over all bounties to remove the ones that are expired
+    // and transfer small fee to cleaner, and the rest back to owner
+    // DISCUSS: maybe better to use DictAccess to sum same destination amounts
+    let (
+        cleaner_lords, cleaner_resources_ids_len, cleaned_bounties_len
+    ) = MercenaryLib.clean_and_transfer_back_expired(
+        target_realm_id=target_realm_id,
+        cleaned_bounties=cleaned_bounties,
+        cleaned_bounties_index=0,
+        cleaner_resources_amounts=cleaner_resources_amounts,
+        cleaner_resources_ids=cleaner_resources_ids,
+        resources_index=0,
+        index=0,
+        bounty_count_limit=count_limit,
+        fees_percentage=fees_percentage,
+        lords_address=lords_address,
+        erc1155_address=erc1155_address,
+        contract_address=contract_address,
+        current_block=current_block,
+    );
+
+    // transfer if lords amount > 0,0
+    let (lords_sup_zero) = uint256_lt(Uint256(0, 0), cleaner_lords);
+    if (lords_sup_zero == 1) {
+        // transfer all lords as once
+        IERC20.transfer(
+            contract_address=lords_address, recipient=caller_address, amount=cleaner_lords
+        );
+        tempvar syscall_ptr = syscall_ptr;
+        tempvar range_check_ptr = range_check_ptr;
+    } else {
+        tempvar syscall_ptr = syscall_ptr;
+        tempvar range_check_ptr = range_check_ptr;
+    }
+
+    // transfer all resources to cleaner in one batch
+    // if the array has been populated, batch transfer
+    let (data: felt*) = alloc();
+    let (erc1155_address) = Module.get_external_contract_address(ExternalContractIds.Resources);
+    if (is_le(1, cleaner_resources_ids_len) == 1) {
+        IERC1155.safeBatchTransferFrom(
+            contract_address=erc1155_address,
+            _from=contract_address,
+            to=caller_address,
+            ids_len=cleaner_resources_ids_len,
+            ids=cleaner_resources_ids,
+            amounts_len=cleaner_resources_ids_len,
+            amounts=cleaner_resources_amounts,
+            data_len=0,
+            data=data,
+        );
+        tempvar syscall_ptr = syscall_ptr;
+        tempvar range_check_ptr = range_check_ptr;
+    } else {
+        tempvar syscall_ptr = syscall_ptr;
+        tempvar range_check_ptr = range_check_ptr;
+    }
+
+    // reset bounty counter to 0
+    bounty_count.write(target_realm_id, 0);
+
+    // emit event
+    BountiesCleaned.emit(
+        target_realm_id=target_realm_id,
+        cleaned_bounties_len=cleaned_bounties_len,
+        cleaned_bounties=cleaned_bounties,
+    );
+
+    return ();
+}
+
 // @notice Transfer the developer fees to any address
 // @param destination_address The destination address for the fees
 // @param resources_ids_len The length of the resources_ids array
@@ -400,9 +516,9 @@ func transfer_dev_fees{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_che
     IERC20.transfer(lords_address, destination_address, lords_amount);
 
     // transfer resources
-    let (dev_resource_amounts: Uint256*) = alloc();
-    MercenaryLib.get_dev_resource_amounts(
-        resources_ids_len, resources_ids, dev_resource_amounts, 0
+    let (dev_resources_amounts: Uint256*) = alloc();
+    MercenaryLib.get_dev_resources_amounts(
+        resources_ids_len, resources_ids, dev_resources_amounts, 0
     );
 
     let (erc1155_address) = Module.get_external_contract_address(ExternalContractIds.Resources);
@@ -417,9 +533,18 @@ func transfer_dev_fees{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_che
         ids_len=resources_ids_len,
         ids=resources_ids,
         amounts_len=resources_ids_len,
-        amounts=dev_resource_amounts,
+        amounts=dev_resources_amounts,
         data_len=0,
         data=data,
+    );
+
+    DevFeesTransferred.emit(
+        destination_address=destination_address,
+        dev_lords_amount=lords_amount,
+        dev_resources_ids_len=resources_ids_len,
+        dev_resources_ids=resources_ids,
+        dev_resources_amounts_len=resources_ids_len,
+        dev_resources_amounts=dev_resources_amounts,
     );
 
     return ();

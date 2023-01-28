@@ -297,7 +297,7 @@ func test_replace_expired_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*,
     %}
 
     // jump forward in time so that some bounties are no more valid
-    %{ stop_warp = roll(501) %}
+    %{ stop_roll = roll(501) %}
 
     // give allowance of amount from this user to this contract
     %{ stop_prank_callable = start_prank(ids.account1, target_contract_address=context.lords_contract) %}

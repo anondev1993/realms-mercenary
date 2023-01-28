@@ -19,3 +19,11 @@ struct Bounty {
     deadline: felt,
     type: BountyType,
 }
+
+struct CleanedBounty {
+    index: felt,
+    owner: felt,
+    owner_amount: Uint256,
+    cleaner_amount: Uint256,
+    type: BountyType,
+}

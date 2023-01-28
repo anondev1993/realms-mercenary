@@ -286,7 +286,7 @@ func test_claim_with_bounties{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, ra
         # resource fees events = 10% of each resource amount
         (increase_resource_fees, _) = divmod(ids.BOUNTY_AMOUNT, 10)
         expect_events(
-        {"name": "BountyClaimed", 
+        {"name": "BountiesClaimed", 
          "data": {
             "target_realm_id": ids.TARGET_REALM_ID, 
             "attacker_lords_amount": {"low": attacker_lords_amount, "high": 0}, 
@@ -333,7 +333,7 @@ func test_claim_with_expired_bounties{
 
     // go into the future to make all bounties expired
     %{
-        stop_warp = roll(1001)
+        stop_roll = roll(1001)
         stop_prank_callable = start_prank(context.account1, context.self_address)
     %}
 
@@ -380,7 +380,7 @@ func test_claim_with_expired_bounties{
     // verify the emitted events
     %{
         expect_events(
-        {"name": "BountyClaimed", 
+        {"name": "BountiesClaimed", 
          "data": [ids.TARGET_REALM_ID, 0, 0, 0, 0, 0, 0, 0, 0]}
         )
     %}

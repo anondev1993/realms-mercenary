@@ -4,8 +4,8 @@ lib-path = "lib"
 cairo-path = ["lib", "lib/cairo_contracts_git/src", "lib/realms_contracts_git", "lib/argent_contracts_starknet_git"]    # build, test
 
 [contracts]
-mercenary = ["contracts/mercenary.cairo"]
-proxy = ["contracts/upgradable/Proxy.cairo"]
+mercenary = ["contracts/Mercenary.cairo"]
+proxy = ["contracts/upgrade/Proxy.cairo"]
 
 [test]
 target = ["tests"]
