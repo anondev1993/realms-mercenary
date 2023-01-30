@@ -55,7 +55,11 @@ func set_cleaner_fees_percentage{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*,
     return ();
 }
 
-// TODO: check what happens if you decrease the count limit while there are still bounties
+// @dev If you set the bounty count limit to a number smaller than the highest index
+// @dev of a bounty on a target realm, then that bounty will never be claimable or cleanable.
+// @dev but the owner will always be able to remove it and issue it again if he wants to.
+// @dev Setting the bounty_count_limit to 0 actually allows us to pause the contract because
+// @dev there are no more issuing, claiming and cleaning possible.
 @external
 func set_bounty_count_limit{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
     bounty_count_limit_: felt

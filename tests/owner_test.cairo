@@ -362,6 +362,7 @@ func test_send_back_dev_fees{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, ran
     assert call_data[6] = 3;
     assert call_data[7] = 0;
 
+    // calling transfer_dev_fees
     call_contract(
         contract_address=proxy_address,
         function_selector=0x67f35a4f552409d1423a365bb1f87844a7ced936b69488e4d86ac92fa9edb1,
@@ -382,6 +383,19 @@ func test_send_back_dev_fees{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, ran
         assert balance_resources1 == ids.RESOURCES_DEV_FEES_TOKEN1
         assert balance_resources2 == ids.RESOURCES_DEV_FEES_TOKEN2
         assert balance_resources3 == ids.RESOURCES_DEV_FEES_TOKEN3
+    %}
+
+    // verify event
+    %{
+        expect_events(
+                {"name": "DevFeesTransferred", 
+                 "data": [
+                 context.account1, ids.LORDS_DEV_FEES, 0, 
+                 # resources ids
+                 3, 1, 0, 2, 0, 3, 0, 
+                 # resources amounts
+                 3, ids.RESOURCES_DEV_FEES_TOKEN1, 0, ids.RESOURCES_DEV_FEES_TOKEN2, 0, ids.RESOURCES_DEV_FEES_TOKEN3, 0]}
+                )
     %}
 
     return ();

@@ -82,17 +82,31 @@ func __setup__{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
 func test_remove_lords_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
     ) -> () {
     alloc_locals;
-    %{ stop_prank_callable = start_prank(caller_address=context.account1, target_contract_address=context.self_address) %}
+    %{
+        # get the bounty before removing it 
+        old_bounty = load(context.self_address, "bounties", "Bounty", [ids.TARGET_REALM_ID, 0, 1])
+        stop_prank_callable = start_prank(caller_address=context.account1, target_contract_address=context.self_address)
+    %}
     remove_bounty(1, Uint256(TARGET_REALM_ID, 0));
     %{ stop_prank_callable() %}
     %{
         # verify that the bounty is removed after claim
-        bounty = load(context.self_address, "bounties", "Bounty", [ids.TARGET_REALM_ID, 0, 1])
-        assert bounty == [0, 0, 0, 0, 0, 0, 0]
+        new_bounty = load(context.self_address, "bounties", "Bounty", [ids.TARGET_REALM_ID, 0, 1])
+        assert new_bounty == [0, 0, 0, 0, 0, 0, 0]
 
         lords_amount = load(context.lords_contract, "ERC20_balances", "Uint256", [context.account1])
         assert lords_amount[0] == ids.BOUNTY_AMOUNT, f'lords amount of person who removed bounty should be {ids.BOUNTY_AMOUNT} but is {lords_amount[0]}'
     %}
+
+    %{
+        # verify event
+        event = old_bounty + [ids.TARGET_REALM_ID, 0, 1] 
+        expect_events(
+        {"name": "BountyRemoved", 
+        "data": event}
+        )
+    %}
+
     return ();
 }
 
@@ -100,17 +114,32 @@ func test_remove_lords_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, ra
 func test_remove_resources_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
     ) -> () {
     alloc_locals;
-    %{ stop_prank_callable = start_prank(caller_address=context.account1, target_contract_address=context.self_address) %}
+    %{
+        # get the bounty before removing it 
+        old_bounty = load(context.self_address, "bounties", "Bounty", [ids.TARGET_REALM_ID, 0, 12])
+        stop_prank_callable = start_prank(caller_address=context.account1, target_contract_address=context.self_address)
+    %}
+    // remove the bounty at index 12
     remove_bounty(12, Uint256(TARGET_REALM_ID, 0));
     %{ stop_prank_callable() %}
     %{
         # verify that the bounty is removed after claim
-        bounty = load(context.self_address, "bounties", "Bounty", [ids.TARGET_REALM_ID, 0, 12])
-        assert bounty == [0, 0, 0, 0, 0, 0, 0]
+        new_bounty = load(context.self_address, "bounties", "Bounty", [ids.TARGET_REALM_ID, 0, 12])
+        assert new_bounty == [0, 0, 0, 0, 0, 0, 0]
 
         # verify that the account1 received the new tokens
         resources_amount = load(context.resources_contract, "ERC1155_balances", "felt", [1, 0, context.account1]) 
         assert resources_amount[0] == ids.BOUNTY_AMOUNT, f'resources amount for token id 1 should be {ids.BOUNTY_AMOUNT} but is {resources_amount}'
     %}
+
+    %{
+        # verify event
+        event = old_bounty + [ids.TARGET_REALM_ID, 0, 12] 
+        expect_events(
+        {"name": "BountyRemoved", 
+        "data": event}
+        )
+    %}
+
     return ();
 }

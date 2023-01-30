@@ -42,3 +42,7 @@ func DevFeesTransferred(
     dev_resources_amounts: Uint256*,
 ) {
 }
+
+@event
+func BountyRemoved(bounty: Bounty, target_realm_id: Uint256, index: felt) {
+}

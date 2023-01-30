@@ -13,7 +13,7 @@ from starkware.cairo.common.alloc import alloc
 
 // Mercenary
 from contracts.structures import Bounty, BountyType, CleanedBounty
-from contracts.events import BountyIssued, BountiesCleaned, DevFeesTransferred
+from contracts.events import BountyIssued, BountiesCleaned, DevFeesTransferred, BountyRemoved
 from contracts.library import MercenaryLib
 from contracts.storage import (
     developer_fees_percentage,
@@ -296,6 +296,10 @@ func remove_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_p
     bounties.write(
         target_realm_id, index, Bounty(0, Uint256(0, 0), 0, BountyType(0, Uint256(0, 0)))
     );
+
+    // emit event
+    BountyRemoved.emit(bounty=bounty, target_realm_id=target_realm_id, index=index);
+
     return ();
 }
 
