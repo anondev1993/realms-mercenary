@@ -302,7 +302,7 @@ func test_claim_with_bounties{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, ra
 }
 
 @external
-func test_claim_with_expired_bounties{
+func test_claim_with_some_expired_bounties{
     syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr
 }() -> () {
     // setup bounties in mercenary contract
@@ -333,7 +333,7 @@ func test_claim_with_expired_bounties{
 
     // go into the future to make all bounties expired
     %{
-        stop_roll = roll(1001)
+        stop_roll = roll(500)
         stop_prank_callable = start_prank(context.account1, context.self_address)
     %}
 
@@ -347,33 +347,173 @@ func test_claim_with_expired_bounties{
 
     // verify bounty resets
     %{
-        # verify that the bounty is removed after claim
-        for i in range(0, ids.BOUNTY_COUNT_LIMIT):        
+        # verify that the non expired bounties are set to 0 but expired bounties have not been cleaned yet
+        for i in range(0, 10):        
+            bounty = load(context.self_address, "bounties", "Bounty", [ids.TARGET_REALM_ID, 0, i])
+            assert bounty != [0, 0, 0, 0, 0, 0, 0], f'bounty is {bounty}'
+        for i in range(10, ids.BOUNTY_COUNT_LIMIT):
             bounty = load(context.self_address, "bounties", "Bounty", [ids.TARGET_REALM_ID, 0, i])
             assert bounty == [0, 0, 0, 0, 0, 0, 0], f'bounty is {bounty}'
     %}
 
     // value transfers
     %{
-        ## verify that account2 received back amounts for lords
+        ###### BOUNTY OWNER ######
+        ## verify that owner account2 did not receive any of their money back
+        bounty_owner_lords_amount_contract = load(context.lords_contract, "ERC20_balances", "felt", [context.account2])[0]
+        assert bounty_owner_lords_amount_contract == 0, f'should be {0} but is {bounty_owner_lords_amount_contract}'
+
+        ## verify that owner account2 did not receive amounts for token id 1,0
+        bounty_owner_resources1_amount_contract = load(context.resources_contract, "ERC1155_balances", "felt", [1, 0, context.account2])[0]
+        assert bounty_owner_resources1_amount_contract == 0, f'should be {0} but is {bounty_owner_resources1_amount_contract}'
+
+        ## verify that owner account2 did not received amounts for token id 2,0
+        bounty_owner_resources2_amount_contract = load(context.resources_contract, "ERC1155_balances", "felt", [2, 0, context.account2])[0]
+        assert bounty_owner_resources2_amount_contract == 0, f'should be {0} but is {bounty_owner_resources2_amount_contract}'
+
+        ###### ATTACKER ######
+        ## verify that attacker account1 did not received lords for expired bounties
+        attacker_lords_amount_contract = load(context.lords_contract, "ERC20_balances", "felt", [context.account1])[0]
+        ## verify that this contract did not store any dev fees for expired bounties
+        dev_lords_amount_contract = load(context.self_address, "dev_fees_lords", "Uint256")[0]
+        assert attacker_lords_amount_contract == 0, f'should be {0} but is {attacker_lords_amount_contract}'
+        assert dev_lords_amount_contract == 0, f'should be {0} but is {dev_lords_amount_contract}'
+
+        ## verify that attacker account1 received amounts for token id 1,0
+        attacker_resources1_amount_contract = load(context.resources_contract, "ERC1155_balances", "felt", [1, 0, context.account1])[0]
+        ## verify that this contract stored the right dev fees
+        dev_resources1_amount_contract = load(context.self_address, "dev_fees_resources", "Uint256", [1, 0])[0]
+        # equal amount from bounties 
+        resources1_amount =  ids.BOUNTY_AMOUNT
+        ## amount going to fees
+        # per bounty
+        dev_resources1_amount = divmod(resources1_amount, 10)[0]
+        # total (30 bounties)
+        dev_total_resources1_amount = 30*dev_resources1_amount
+
+        ## amount going to attacker
+        # per bounty
+        attacker_resources1_amount = resources1_amount - dev_resources1_amount
+        # total (30 bounties)
+        attacker_total_resources1_amount = 30*attacker_resources1_amount
+        # what was gained from winning combat (received token 2,0 and token 3,0 from combat module)
+        assert attacker_resources1_amount_contract == attacker_total_resources1_amount, f'should be {attacker_total_resources1_amount} but is {attacker_resources1_amount_contract}'
+        assert dev_resources1_amount_contract == dev_total_resources1_amount, f'should be {dev_total_resources1_amount} but is {dev_resources1_amount_contract}'
+
+        ## verify that attacker account1 received amounts for token id 2,0
+        attacker_resources2_amount_contract = load(context.resources_contract, "ERC1155_balances", "felt", [2, 0, context.account1])[0]
+        ## verify that this contract stored the right dev fees
+        dev_resources2_amount_contract = load(context.self_address, "dev_fees_resources", "Uint256", [2, 0])[0]
+        # equal amount from bounties 
+        resources2_amount =  ids.BOUNTY_AMOUNT
+        ## amount going to fees
+        # per bounty
+        dev_resources2_amount = divmod(resources2_amount, 10)[0]
+        # total (10 bounties)
+        dev_total_resources2_amount = 10*dev_resources2_amount
+
+        ## amount going to attacker
+        # per bounty
+        attacker_resources2_amount = resources2_amount - dev_resources2_amount
+        # total (10 bounties)
+        attacker_total_resources2_amount = 10*attacker_resources2_amount
+        # what was gained from winning combat (received token 2,0 and token 3,0 from combat module)
+        attacker_total_resources2_amount += 1*10**18
+        assert attacker_resources2_amount_contract == attacker_total_resources2_amount, f'should be {attacker_total_resources2_amount} but is {attacker_resources2_amount_contract}'
+        assert dev_resources2_amount_contract == dev_total_resources2_amount, f'should be {dev_total_resources2_amount} but is {dev_resources2_amount_contract}'
+    %}
+
+    // verify the emitted events
+    %{
+        expect_events(
+        {"name": "BountiesClaimed", 
+         "data": {
+            "target_realm_id": ids.TARGET_REALM_ID, 
+            "attacker_lords_amount": {"low": 0, "high": 0}, 
+            "dev_lords_amount": {"low": 0, "high": 0}, 
+            "resources_ids": 30*[{"low": 1, "high": 0}] + 10*[{"low": 2, "high": 0}], 
+            "attacker_resources_amounts": 30*[{"low": attacker_resources1_amount, "high": 0}] + 10*[{"low": attacker_resources2_amount, "high": 0}], 
+            "dev_resources_amounts": 30*[{"low": dev_resources1_amount, "high": 0}] + 10*[{"low": dev_resources2_amount, "high": 0}], 
+        }}
+        ),
+    %}
+
+    return ();
+}
+
+@external
+func test_claim_with_all_expired_bounties{
+    syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr
+}() -> () {
+    // setup bounties in mercenary contract
+    alloc_locals;
+    local self_address;
+    %{
+        ids.self_address = context.self_address
+        for i in range(0, ids.BOUNTY_COUNT_LIMIT):
+            if (i <= 9):
+                # 10 times
+                # lords bounties
+                store(context.self_address, "bounties", [context.account2, ids.BOUNTY_AMOUNT, 0, 500, 1, 0, 0], [ids.TARGET_REALM_ID, 0, i])
+            if (i >= 10 and i < 40):
+                # 30 resource bounties
+                store(context.self_address, "bounties", [context.account2, ids.BOUNTY_AMOUNT, 0, 1000, 0, 1, 0], [ids.TARGET_REALM_ID, 0, i])
+            if (i>=40):
+                # 10 times
+                # resource bounties
+                store(context.self_address, "bounties", [context.account2, ids.BOUNTY_AMOUNT, 0, 1000, 0, 2, 0], [ids.TARGET_REALM_ID, 0, i])
+
+        # verify that the bounty is correct
+        bounty = load(context.self_address, "bounties", "Bounty", [ids.TARGET_REALM_ID, 0, 12])
+        assert bounty == [context.account2, ids.BOUNTY_AMOUNT, 0, 1000, 0, 1, 0]
+
+        # set the number of bounties in storage
+        store(context.self_address, "bounty_count", [ids.BOUNTY_COUNT_LIMIT], [ids.TARGET_REALM_ID, 0])
+    %}
+
+    // go into the future to make all bounties expired
+    %{
+        stop_roll = roll(1000)
+        stop_prank_callable = start_prank(context.account1, context.self_address)
+    %}
+
+    claim_bounties(
+        target_realm_id=Uint256(TARGET_REALM_ID, 0),
+        attacking_realm_id=Uint256(ATTACKING_REALM_ID, 0),
+        attacking_army_id=ATTACKING_ARMY_ID,
+        defending_army_id=DEFENDING_ARMY_ID,
+    );
+    %{ stop_prank_callable() %}
+
+    // verify bounty resets
+    %{
+        # verify that only the non expired bounties are set to 0
+        for i in range(0, ids.BOUNTY_COUNT_LIMIT):        
+            bounty = load(context.self_address, "bounties", "Bounty", [ids.TARGET_REALM_ID, 0, i])
+            assert bounty != [0, 0, 0, 0, 0, 0, 0], f'bounty is {bounty}'
+    %}
+
+    // value transfers
+    %{
+        ## verify that account2 did not receive any of their money back
         bounty_owner_lords_amount_contract = load(context.lords_contract, "ERC20_balances", "felt", [context.account2])[0]
         ## verify that this contract didn't store any dev fees
         dev_lords_amount_contract = load(context.self_address, "dev_fees_lords", "Uint256")[0]
-        assert bounty_owner_lords_amount_contract == 10*ids.BOUNTY_AMOUNT, f'should be {10*ids.BOUNTY_AMOUNT} but is {bounty_owner_lords_amount_contract}'
+        assert bounty_owner_lords_amount_contract == 0, f'should be {0} but is {bounty_owner_lords_amount_contract}'
         assert dev_lords_amount_contract == 0, f'should be {0} but is {dev_lords_amount_contract}'
 
-        ## verify that account2 received amounts for token id 1,0
+        ## verify that account2 did not receive amounts for token id 1,0
         bounty_owner_resources1_amount_contract = load(context.resources_contract, "ERC1155_balances", "felt", [1, 0, context.account2])[0]
         ## verify that this contract stored the right dev fees
         dev_resources1_amount_contract = load(context.self_address, "dev_fees_resources", "Uint256", [1, 0])[0]
-        assert bounty_owner_resources1_amount_contract == 30*ids.BOUNTY_AMOUNT, f'should be {30*ids.BOUNTY_AMOUNT} but is {bounty_owner_resources1_amount_contract}'
+        assert bounty_owner_resources1_amount_contract == 0, f'should be {0} but is {bounty_owner_resources1_amount_contract}'
         assert dev_resources1_amount_contract == 0, f'should be {0} but is {dev_resources1_amount_contract}'
 
-        ## verify that account2 received amounts for token id 2,0
+        ## verify that account2 did not received amounts for token id 2,0
         bounty_owner_resources2_amount_contract = load(context.resources_contract, "ERC1155_balances", "felt", [2, 0, context.account2])[0]
         ## verify that this contract stored the right dev fees
         dev_resources2_amount_contract = load(context.self_address, "dev_fees_resources", "Uint256", [2, 0])[0]
-        assert bounty_owner_resources2_amount_contract == 10*ids.BOUNTY_AMOUNT, f'should be {10*ids.BOUNTY_AMOUNT} but is {bounty_owner_resources2_amount_contract}'
+        assert bounty_owner_resources2_amount_contract == 0, f'should be {0} but is {bounty_owner_resources2_amount_contract}'
         assert dev_resources2_amount_contract == 0, f'should be {0} but is {dev_resources2_amount_contract}'
     %}
 

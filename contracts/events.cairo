@@ -11,7 +11,6 @@ from starkware.cairo.common.uint256 import Uint256
 func BountyIssued(bounty: Bounty, target_realm_id: Uint256, index: felt) {
 }
 
-// TODO: refactor this find a better way to consolidate info (maybe one struct?)
 @event
 func BountiesClaimed(
     target_realm_id: Uint256,

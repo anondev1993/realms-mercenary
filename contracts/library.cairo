@@ -102,20 +102,6 @@ namespace MercenaryLib {
             return (index=index);
         }
 
-        if (is_le(current_bounty.deadline, current_block) == 1) {
-            transfer_back_bounty(
-                lords_address,
-                erc1155_address,
-                contract_address,
-                current_bounty.type,
-                current_bounty.owner,
-                current_bounty.amount,
-            );
-            // dont increase count here because we replace an existing bounty
-            bounties.write(target_realm_id, index, new_bounty);
-            return (index=index);
-        }
-
         return _add_bounty_to_storage(
             new_bounty,
             target_realm_id,
@@ -595,23 +581,6 @@ namespace MercenaryLib {
 
         // if bounty is expired transfer back and don't sum
         if (is_le(bounty.deadline, current_block) == 1) {
-            // transfer back bounty to owner
-            transfer_back_bounty(
-                lords_address,
-                erc1155_address,
-                contract_address,
-                bounty.type,
-                bounty.owner,
-                bounty.amount,
-            );
-            // reset bounty to 0
-            bounties.write(
-                target_realm_id, index, Bounty(0, Uint256(0, 0), 0, BountyType(0, Uint256(0, 0)))
-            );
-            tempvar syscall_ptr = syscall_ptr;
-            tempvar pedersen_ptr = pedersen_ptr;
-            tempvar range_check_ptr = range_check_ptr;
-
             return collect_tokens_and_transfer_back_expired(
                 resources_ids,
                 attacker_resources_amounts,

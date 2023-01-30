@@ -267,64 +267,6 @@ func test_max_bounties_should_revert{
 }
 
 @external
-func test_replace_expired_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
-    ) {
-    alloc_locals;
-    local lords_contract;
-    local self_address;
-    local account1;
-    %{
-        ids.self_address = context.self_address
-        ids.lords_contract = context.lords_contract
-        ids.account1 = context.account1
-    %}
-
-    // create new lords bounty
-    let bounty_type = BountyType(is_lords=1, resource_id=Uint256(0, 0));
-    let (ts) = get_block_timestamp();
-    local deadline = ts + 1500;
-    let bounty = Bounty(
-        owner=account1, amount=Uint256(BOUNTY_AMOUNT, 0), deadline=deadline, type=bounty_type
-    );
-
-    // fill all the bounties slot for one realm
-    %{
-        for i in range(0, ids.BOUNTY_COUNT_LIMIT):
-            if i == 21:
-                store(context.self_address, "bounties", [ids.account1, ids.BOUNTY_AMOUNT, 0, 500, 1, 0, 0], [ids.TARGET_REALM_ID, 0, i])
-            else:
-                store(context.self_address, "bounties", [ids.account1, ids.BOUNTY_AMOUNT, 0, 1000, 1, 0, 0], [ids.TARGET_REALM_ID, 0, i])
-    %}
-
-    // jump forward in time so that some bounties are no more valid
-    %{ stop_roll = roll(501) %}
-
-    // give allowance of amount from this user to this contract
-    %{ stop_prank_callable = start_prank(ids.account1, target_contract_address=context.lords_contract) %}
-    let (success) = IERC20.approve(
-        contract_address=lords_contract, spender=self_address, amount=Uint256(BOUNTY_AMOUNT, 0)
-    );
-    %{ stop_prank_callable() %}
-
-    // issue new bounty and check that the bounty took the slot of an expired bounty
-    %{ stop_prank_callable = start_prank(ids.account1, target_contract_address=context.self_address) %}
-    let (index) = issue_bounty(target_realm_id=Uint256(TARGET_REALM_ID, 0), bounty=bounty);
-    %{ stop_prank_callable() %}
-    %{
-        ## assert that the expired bounty at index 21 was replaced
-        assert ids.index == 21, f'The index {ids.index} is not equal to 21'
-        issued_bounty = load(context.self_address, "bounties", "Bounty", [ids.TARGET_REALM_ID, 0, 21])
-        assert issued_bounty[3] == ids.deadline, f'deadline of the bounty {issued_bounty[3]} not equal to {ids.deadline}'                  # deadline
-
-        ## assert that the bounty owner received back his money
-        lords_balance = load(ids.lords_contract, "ERC20_balances", "Uint256", [ids.account1])[0] 
-        assert lords_balance == ids.BOUNTY_AMOUNT, f'amount of lords in account1 should be {ids.BOUNTY_AMOUNT} but is {lords_balance}'
-    %}
-
-    return ();
-}
-
-@external
 func test_not_big_enough_delay_should_revert{
     syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr
 }() {
