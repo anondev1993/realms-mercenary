@@ -57,7 +57,7 @@ The contract is compatible with 2 types of tokens:
 - $LORDS ERC20 tokens. Contract code can be found [here](https://github.com/BibliothecaDAO/realms-contracts/blob/main/contracts/settling_game/tokens/Lords_ERC20_Mintable.cairo).
 - Realms resources ERC1155 tokens. Contract can be found [here](https://github.com/BibliothecaDAO/realms-contracts/blob/main/contracts/settling_game/tokens/Resources_ERC1155_Mintable_Burnable.cairo).
 
-One bounty can only hold one type of tokens. If a players wants to add multiple token types, one bounty per token needs to be issued.
+One bounty can only hold one type of tokens. If a player wants to add multiple token types, one bounty per token needs to be issued.
 
 For each of these tokens, a minimum amount is set in the contract so that the storage is not spammed with valueless bounties.
 
@@ -74,16 +74,60 @@ A bounty is composed of:
 
 ## Contract Public Entrypoints 🛡
 
-| name           | arguments                                                                 | description                                                                                                                                                                                                                                  |
-| -------------- | ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| issue_bounty   | target_realm_id, bounty                                                   | Adds a bounty on a target Realm and transfers the amount from the player to the bounty contract                                                                                                                                              |
-| remove_bounty  | index, target_realm_id                                                    | Removes a certain bounty, needs the index of the bounty and the target Realm id                                                                                                                                                              |
-| claim_bounties | target_realm_id, attacking_realm_id, attacking_army_id, defending_army_id | Attacks another realm through the mercenary contract, transfers the attacker’s Realm to the contract, initiates a combat with the target Realm, then transfers back the NFT in addition to the pillaged resources and claimed bounty amounts |
+| name           | arguments                                                                 | description                                                                                                                                                                                                                                                                                                   |
+| -------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| issue_bounty   | target_realm_id, bounty                                                   | Adds a bounty on a target Realm and transfers the amount from the player to the mercenary contract                                                                                                                                                                                                            |
+| remove_bounty  | index, target_realm_id                                                    | Removes a bounty, needs the index of the bounty and the target Realm id                                                                                                                                                                                                                                       |
+| claim_bounties | target_realm_id, attacking_realm_id, attacking_army_id, defending_army_id | Attacks another realm through the mercenary contract. To do that the attacker’s Realm is first transferred to the mercenary contract, which then initiates a combat with the target Realm and finally transfers back the NFT to the attacker in addition to the pillaged resources and claimed bounty amounts |
+| clean_bounties | target_realm_id                                                           | Allows anyone to clean out the expired bounties on a target realm and keep a percentage of each expired bounty to pay back for the used gas. The cleaner_fees_percentage is defined by the owner of the contract.                                                                                             |
 
 ## Sequence Diagrams 📜
 
-![Untitled](imgs/issue-bounty-sequence-diagram.png)
-![Untitled](imgs/claim-bounties-sequence-diagram.png)
+### Issue a bounty
+
+```mermaid
+sequenceDiagram
+    title Realms Mercenary Module - Player issues a bounty on a Realm
+
+    actor Player
+    participant Mercenary Module
+
+    Player ->> Mercenary Module: Approves bounty tokens to Mercenary
+    Player ->> Mercenary Module: issue_bounty (target_realm_id, bounty)
+    Player ->> Mercenary Module: Transfers bounty tokens
+    Mercenary Module ->> Mercenary Module: Goes through bounties in storage
+    Mercenary Module ->> Mercenary Module: Transfers back expired bounties
+    Mercenary Module ->> Mercenary Module: Places bounty in first free storage
+    Mercenary Module ->> Player: Returns index
+```
+
+### Claim a bounty
+
+```mermaid
+sequenceDiagram
+    title Realms Mercenary Module - Player attacks trough Mercenary Module and wins
+
+    actor Player
+    participant Realms_ERC721
+    participant Mercenary Module
+
+    Player ->> Realms_ERC721: approves Realm transfer to Mercenary
+    Player ->> Mercenary Module: claim_bounties
+    Realms_ERC721 ->> Mercenary Module : transfers player's Realm
+    Mercenary Module ->> Mercenary Module: Get current resources balance of mercenary contract
+    Mercenary Module ->> Combat Module: initiate_combat and wins
+    Combat Module ->> Mercenary Module: receives pillaged resources from attacked Realm
+    Mercenary Module ->> Mercenary Module: Get new resources balance of mercenary contract
+    Mercenary Module ->> Mercenary Module: Computes difference
+    Mercenary Module ->> Player": Transfers the pillaged resources (the difference)
+    Mercenary Module ->> Mercenary Module: Sums all the $LORDS and resources from non expired bounties
+    Mercenary Module ->> Mercenary Module: Transfers back expired bounties
+    Mercenary Module ->> Mercenary Module: Remove the developer fees
+    Mercenary Module ->> Player: transfers the bounty $LORDS
+    Mercenary Module ->> Player: transfers the bounty resources
+    Mercenary Module ->> Realms_ERC721: sends back player NFT
+
+```
 
 ## Royalties 👨‍💻
 
