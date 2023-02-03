@@ -12,12 +12,11 @@ from starkware.cairo.common.uint256 import Uint256, assert_uint256_le, uint256_l
 from starkware.cairo.common.alloc import alloc
 
 // Mercenary
-from contracts.structures import Bounty, BountyType, CleanedBounty
-from contracts.events import BountyIssued, BountiesCleaned, DevFeesTransferred, BountyRemoved
+from contracts.structures import Bounty, BountyType
+from contracts.events import BountyIssued, DevFeesTransferred, BountyRemoved
 from contracts.library import MercenaryLib
 from contracts.storage import (
     developer_fees_percentage,
-    cleaner_fees_percentage,
     bounty_count_limit,
     bounty_amount_limit_lords,
     bounty_amount_limit_resources,
@@ -27,7 +26,6 @@ from contracts.storage import (
     dev_fees_lords,
 )
 from contracts.getters import (
-    view_cleaner_fees_percentage,
     view_developer_fees_percentage,
     view_bounty_count_limit,
     view_bounty_amount_limit_lords,
@@ -38,7 +36,6 @@ from contracts.getters import (
 )
 
 from contracts.setters import (
-    set_cleaner_fees_percentage,
     set_developer_fees_percentage,
     set_bounty_count_limit,
     set_bounty_amount_limit_lords,
@@ -81,7 +78,6 @@ from realms_contracts_git.contracts.settling_game.utils.game_structs import (
 // @param owner Owner address
 // @proxy_admin: Proxy admin address
 // @param address_of_controller The address of the module controller
-// @param cleaner_fees_percentage_ The cleaner fees percentage
 // @param developer_fees_percentage_ The developer fees percentage
 // @param bounty_count_limit_ The max number of bounties on one realm at a time
 // @param bounty_amount_limit_lords_ The minimum lords amount for a bounty
@@ -96,7 +92,6 @@ func initializer{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr
     owner: felt,
     proxy_admin: felt,
     address_of_controller: felt,
-    cleaner_fees_percentage_: felt,
     developer_fees_percentage_: felt,
     bounty_count_limit_: felt,
     bounty_amount_limit_lords_: Uint256,
@@ -118,10 +113,6 @@ func initializer{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr
     with_attr error_message("Developer fee percentage higher than 100%") {
         assert_le_felt(developer_fees_percentage_, FEES_PRECISION);
     }
-    with_attr error_message("Cleaner fee percentage higher than 100%") {
-        assert_le_felt(cleaner_fees_percentage_, FEES_PRECISION);
-    }
-    cleaner_fees_percentage.write(cleaner_fees_percentage_);
     developer_fees_percentage.write(developer_fees_percentage_);
     bounty_count_limit.write(bounty_count_limit_);
     bounty_amount_limit_lords.write(bounty_amount_limit_lords_);
@@ -395,110 +386,6 @@ func claim_bounties{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_
         from_=contract_address,
         to=caller_address,
         tokenId=attacking_realm_id,
-    );
-
-    return ();
-}
-
-// @notice Removes all bounties that are expired and receives a % of the expired bounties amount
-// defined by cleaner_fees_percentage
-// @param target_realm_id The target realm id
-@external
-func clean_bounties{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
-    target_realm_id: Uint256
-) -> () {
-    // go over all bounties and transfers back the ones that are expired
-    alloc_locals;
-    let (bounty_count_) = bounty_count.read(target_realm_id);
-    with_attr error_message("There are no bounties on this realm") {
-        assert_not_zero(bounty_count_);
-    }
-
-    // syscalls
-    let (caller_address) = get_caller_address();
-    let (contract_address) = get_contract_address();
-    let (current_block) = get_block_number();
-
-    // storage
-    let (fees_percentage) = cleaner_fees_percentage.read();
-    let (count_limit) = bounty_count_limit.read();
-
-    // external contracts
-    let (lords_address) = Module.get_external_contract_address(ExternalContractIds.Lords);
-    let (erc1155_address) = Module.get_external_contract_address(ExternalContractIds.Resources);
-
-    // cleaned bounties for the event
-    let (local cleaned_bounties: CleanedBounty*) = alloc();
-    // cleaner resources id and amounts for the batch transfer
-    let (local cleaner_resources_amounts: Uint256*) = alloc();
-    let (local cleaner_resources_ids: Uint256*) = alloc();
-
-    // go over all bounties to remove the ones that are expired
-    // and transfer small fee to cleaner, and the rest back to owner
-    // DISCUSS: maybe better to use DictAccess to sum same destination amounts
-    let (
-        cleaner_lords, cleaner_resources_ids_len, cleaned_bounties_len
-    ) = MercenaryLib.clean_and_transfer_back_expired(
-        target_realm_id=target_realm_id,
-        cleaned_bounties=cleaned_bounties,
-        cleaned_bounties_index=0,
-        cleaner_resources_amounts=cleaner_resources_amounts,
-        cleaner_resources_ids=cleaner_resources_ids,
-        resources_index=0,
-        index=0,
-        bounty_count_limit=count_limit,
-        fees_percentage=fees_percentage,
-        lords_address=lords_address,
-        erc1155_address=erc1155_address,
-        contract_address=contract_address,
-        current_block=current_block,
-    );
-
-    // transfer if lords amount > 0,0
-    let (lords_sup_zero) = uint256_lt(Uint256(0, 0), cleaner_lords);
-    if (lords_sup_zero == 1) {
-        // transfer all lords as once
-        IERC20.transfer(
-            contract_address=lords_address, recipient=caller_address, amount=cleaner_lords
-        );
-        tempvar syscall_ptr = syscall_ptr;
-        tempvar range_check_ptr = range_check_ptr;
-    } else {
-        tempvar syscall_ptr = syscall_ptr;
-        tempvar range_check_ptr = range_check_ptr;
-    }
-
-    // transfer all resources to cleaner in one batch
-    // if the array has been populated, batch transfer
-    let (data: felt*) = alloc();
-    let (erc1155_address) = Module.get_external_contract_address(ExternalContractIds.Resources);
-    if (is_le(1, cleaner_resources_ids_len) == 1) {
-        IERC1155.safeBatchTransferFrom(
-            contract_address=erc1155_address,
-            _from=contract_address,
-            to=caller_address,
-            ids_len=cleaner_resources_ids_len,
-            ids=cleaner_resources_ids,
-            amounts_len=cleaner_resources_ids_len,
-            amounts=cleaner_resources_amounts,
-            data_len=0,
-            data=data,
-        );
-        tempvar syscall_ptr = syscall_ptr;
-        tempvar range_check_ptr = range_check_ptr;
-    } else {
-        tempvar syscall_ptr = syscall_ptr;
-        tempvar range_check_ptr = range_check_ptr;
-    }
-
-    // reset bounty counter to 0
-    bounty_count.write(target_realm_id, 0);
-
-    // emit event
-    BountiesCleaned.emit(
-        target_realm_id=target_realm_id,
-        cleaned_bounties_len=cleaned_bounties_len,
-        cleaned_bounties=cleaned_bounties,
     );
 
     return ();

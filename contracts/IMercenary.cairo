@@ -12,8 +12,6 @@ namespace IMercenary {
         defending_army_id: felt,
     ) -> () {
     }
-    func clean_bounties(target_realm_id: felt) -> () {
-    }
     func remove_bounty(index: felt, target_realm_id: Uint256) -> () {
     }
     func issue_bounty(target_realm_id: Uint256, bounty: Bounty) -> (index: felt) {
@@ -26,9 +24,6 @@ namespace IMercenary {
     //
     // Getters
     //
-    func view_cleaner_fees_percentage() -> (developer_fees_percentage: felt) {
-    }
-
     func view_developer_fees_percentage() -> (developer_fees_percentage: felt) {
     }
 
@@ -51,9 +46,6 @@ namespace IMercenary {
     //
     // Setters
     //
-    func set_cleaner_fees_percentage(cleaner_fees_percentage_: felt) -> () {
-    }
-
     func set_developer_fees_percentage(developer_fees_percentage_: felt) -> () {
     }
 

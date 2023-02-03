@@ -347,33 +347,33 @@ func test_claim_with_expired_bounties{
 
     // verify bounty resets
     %{
-        # verify that the bounty is removed after claim
+        # verify that the expired bounties are not reset to 0 after claim
         for i in range(0, ids.BOUNTY_COUNT_LIMIT):        
             bounty = load(context.self_address, "bounties", "Bounty", [ids.TARGET_REALM_ID, 0, i])
-            assert bounty == [0, 0, 0, 0, 0, 0, 0], f'bounty is {bounty}'
+            assert bounty != [0, 0, 0, 0, 0, 0, 0], f'bounty is {bounty}'
     %}
 
     // value transfers
     %{
-        ## verify that account2 received back amounts for lords
+        ## verify that account2 did received back amounts for lords
         bounty_owner_lords_amount_contract = load(context.lords_contract, "ERC20_balances", "felt", [context.account2])[0]
         ## verify that this contract didn't store any dev fees
         dev_lords_amount_contract = load(context.self_address, "dev_fees_lords", "Uint256")[0]
-        assert bounty_owner_lords_amount_contract == 10*ids.BOUNTY_AMOUNT, f'should be {10*ids.BOUNTY_AMOUNT} but is {bounty_owner_lords_amount_contract}'
+        assert bounty_owner_lords_amount_contract == 0, f'should be {0} but is {bounty_owner_lords_amount_contract}'
         assert dev_lords_amount_contract == 0, f'should be {0} but is {dev_lords_amount_contract}'
 
-        ## verify that account2 received amounts for token id 1,0
+        ## verify that account2 did not receive amounts for token id 1,0
         bounty_owner_resources1_amount_contract = load(context.resources_contract, "ERC1155_balances", "felt", [1, 0, context.account2])[0]
         ## verify that this contract stored the right dev fees
         dev_resources1_amount_contract = load(context.self_address, "dev_fees_resources", "Uint256", [1, 0])[0]
-        assert bounty_owner_resources1_amount_contract == 30*ids.BOUNTY_AMOUNT, f'should be {30*ids.BOUNTY_AMOUNT} but is {bounty_owner_resources1_amount_contract}'
+        assert bounty_owner_resources1_amount_contract == 0, f'should be {0} but is {bounty_owner_resources1_amount_contract}'
         assert dev_resources1_amount_contract == 0, f'should be {0} but is {dev_resources1_amount_contract}'
 
-        ## verify that account2 received amounts for token id 2,0
+        ## verify that account2 did not receive amounts for token id 2,0
         bounty_owner_resources2_amount_contract = load(context.resources_contract, "ERC1155_balances", "felt", [2, 0, context.account2])[0]
         ## verify that this contract stored the right dev fees
         dev_resources2_amount_contract = load(context.self_address, "dev_fees_resources", "Uint256", [2, 0])[0]
-        assert bounty_owner_resources2_amount_contract == 10*ids.BOUNTY_AMOUNT, f'should be {10*ids.BOUNTY_AMOUNT} but is {bounty_owner_resources2_amount_contract}'
+        assert bounty_owner_resources2_amount_contract == 0, f'should be {0} but is {bounty_owner_resources2_amount_contract}'
         assert dev_resources2_amount_contract == 0, f'should be {0} but is {dev_resources2_amount_contract}'
     %}
 
