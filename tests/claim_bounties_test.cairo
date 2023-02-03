@@ -199,9 +199,6 @@ func test_claim_with_bounties{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, ra
         # verify that the bounty is correct
         bounty = load(context.self_address, "bounties", "Bounty", [ids.TARGET_REALM_ID, 0, 12])
         assert bounty == [1, ids.BOUNTY_AMOUNT, 0, 1000, 0, 1, 0]
-
-        # set the number of bounties in storage
-        store(context.self_address, "bounty_count", [ids.BOUNTY_COUNT_LIMIT], [ids.TARGET_REALM_ID, 0])
     %}
 
     %{ stop_prank_callable = start_prank(context.account1, context.self_address) %}
@@ -302,7 +299,7 @@ func test_claim_with_bounties{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, ra
 }
 
 @external
-func test_claim_with_expired_bounties{
+func test_claim_with_expired_bounties_should_revert{
     syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr
 }() -> () {
     // setup bounties in mercenary contract
@@ -326,15 +323,13 @@ func test_claim_with_expired_bounties{
         # verify that the bounty is correct
         bounty = load(context.self_address, "bounties", "Bounty", [ids.TARGET_REALM_ID, 0, 12])
         assert bounty == [context.account2, ids.BOUNTY_AMOUNT, 0, 1000, 0, 1, 0]
-
-        # set the number of bounties in storage
-        store(context.self_address, "bounty_count", [ids.BOUNTY_COUNT_LIMIT], [ids.TARGET_REALM_ID, 0])
     %}
 
     // go into the future to make all bounties expired
     %{
-        stop_roll = roll(1001)
+        stop_roll = roll(1000)
         stop_prank_callable = start_prank(context.account1, context.self_address)
+        expect_revert(error_message="No bounties on this realm")
     %}
 
     claim_bounties(
@@ -344,46 +339,6 @@ func test_claim_with_expired_bounties{
         defending_army_id=DEFENDING_ARMY_ID,
     );
     %{ stop_prank_callable() %}
-
-    // verify bounty resets
-    %{
-        # verify that the expired bounties are not reset to 0 after claim
-        for i in range(0, ids.BOUNTY_COUNT_LIMIT):        
-            bounty = load(context.self_address, "bounties", "Bounty", [ids.TARGET_REALM_ID, 0, i])
-            assert bounty != [0, 0, 0, 0, 0, 0, 0], f'bounty is {bounty}'
-    %}
-
-    // value transfers
-    %{
-        ## verify that account2 did received back amounts for lords
-        bounty_owner_lords_amount_contract = load(context.lords_contract, "ERC20_balances", "felt", [context.account2])[0]
-        ## verify that this contract didn't store any dev fees
-        dev_lords_amount_contract = load(context.self_address, "dev_fees_lords", "Uint256")[0]
-        assert bounty_owner_lords_amount_contract == 0, f'should be {0} but is {bounty_owner_lords_amount_contract}'
-        assert dev_lords_amount_contract == 0, f'should be {0} but is {dev_lords_amount_contract}'
-
-        ## verify that account2 did not receive amounts for token id 1,0
-        bounty_owner_resources1_amount_contract = load(context.resources_contract, "ERC1155_balances", "felt", [1, 0, context.account2])[0]
-        ## verify that this contract stored the right dev fees
-        dev_resources1_amount_contract = load(context.self_address, "dev_fees_resources", "Uint256", [1, 0])[0]
-        assert bounty_owner_resources1_amount_contract == 0, f'should be {0} but is {bounty_owner_resources1_amount_contract}'
-        assert dev_resources1_amount_contract == 0, f'should be {0} but is {dev_resources1_amount_contract}'
-
-        ## verify that account2 did not receive amounts for token id 2,0
-        bounty_owner_resources2_amount_contract = load(context.resources_contract, "ERC1155_balances", "felt", [2, 0, context.account2])[0]
-        ## verify that this contract stored the right dev fees
-        dev_resources2_amount_contract = load(context.self_address, "dev_fees_resources", "Uint256", [2, 0])[0]
-        assert bounty_owner_resources2_amount_contract == 0, f'should be {0} but is {bounty_owner_resources2_amount_contract}'
-        assert dev_resources2_amount_contract == 0, f'should be {0} but is {dev_resources2_amount_contract}'
-    %}
-
-    // verify the emitted events
-    %{
-        expect_events(
-        {"name": "BountiesClaimed", 
-         "data": [ids.TARGET_REALM_ID, 0, 0, 0, 0, 0, 0, 0, 0]}
-        )
-    %}
 
     return ();
 }

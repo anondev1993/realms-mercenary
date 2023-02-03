@@ -24,7 +24,6 @@ from contracts.storage import (
     developer_fees_percentage,
     bounty_amount_limit_resources,
     bounty_count_limit,
-    bounty_count,
     bounties,
     dev_fees_lords,
     dev_fees_resources,
@@ -97,8 +96,6 @@ namespace MercenaryLib {
         // if no bounty there or if the bounty's deadline is passed, put bounty there
         if (current_bounty.owner == 0) {
             bounties.write(target_realm_id, index, new_bounty);
-            // increase count here because there is a new bounty
-            increase_bounty_count(target_realm_id);
             return (index=index);
         }
 
@@ -303,8 +300,16 @@ namespace MercenaryLib {
         let (new_dev_lords, _) = uint256_add(current_dev_lords, dev_lords);
         dev_fees_lords.write(new_dev_lords);
 
-        // transfer if lords amount > 0,0
+        let resources_sup_zero = is_not_zero(resources_ids_len);
         let (lords_sup_zero) = uint256_lt(Uint256(0, 0), attacker_lords);
+        let has_at_least_one_bounty = resources_sup_zero + lords_sup_zero;
+
+        // check that the target realm had at least one bounty on it
+        with_attr error_message("No bounties on this realm") {
+            assert_not_zero(has_at_least_one_bounty);
+        }
+
+        // transfer if lords amount > 0,0
         if (lords_sup_zero == 1) {
             // transfer all lords as once
             IERC20.transfer(
@@ -320,7 +325,7 @@ namespace MercenaryLib {
         let (data: felt*) = alloc();
         let (erc1155_address) = Module.get_external_contract_address(ExternalContractIds.Resources);
         // if the array has been populated, batch transfer
-        if (is_le(0, resources_ids_len) == 1) {
+        if (resources_sup_zero == 1) {
             IERC1155.safeBatchTransferFrom(
                 contract_address=erc1155_address,
                 _from=contract_address,
@@ -338,9 +343,6 @@ namespace MercenaryLib {
             tempvar syscall_ptr = syscall_ptr;
             tempvar range_check_ptr = range_check_ptr;
         }
-
-        // reset bounty counter to 0
-        bounty_count.write(target_realm_id, 0);
 
         // emit event
         BountiesClaimed.emit(
@@ -417,13 +419,7 @@ namespace MercenaryLib {
         }
 
         // if bounty is expired pass
-        // TODO: check the behavior of bounty_count for expired bounties, is bounty count even needed ?
         if (is_le(bounty.deadline, current_block) == 1) {
-            // todo: is this needed?
-            // tempvar syscall_ptr = syscall_ptr;
-            // tempvar pedersen_ptr = pedersen_ptr;
-            // tempvar range_check_ptr = range_check_ptr;
-
             return collect_tokens(
                 resources_ids,
                 attacker_resources_amounts,
@@ -492,28 +488,6 @@ namespace MercenaryLib {
                 current_block,
             );
         }
-    }
-
-    // @notice Increase the bounty count of a realm by 1
-    // @param target_realm_id The target realm id
-    func increase_bounty_count{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
-        target_realm_id: Uint256
-    ) -> () {
-        alloc_locals;
-        let (bounty_count_) = bounty_count.read(target_realm_id);
-        bounty_count.write(target_realm_id, bounty_count_ + 1);
-        return ();
-    }
-
-    // @notice Decrease the bounty count of a realm by 1
-    // @param target_realm_id The target realm id
-    func decrease_bounty_count{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
-        target_realm_id: Uint256
-    ) -> () {
-        alloc_locals;
-        let (bounty_count_) = bounty_count.read(target_realm_id);
-        bounty_count.write(target_realm_id, bounty_count_ - 1);
-        return ();
     }
 
     // @notice Converts a felt into Uint256

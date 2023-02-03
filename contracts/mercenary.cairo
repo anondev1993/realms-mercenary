@@ -22,7 +22,6 @@ from contracts.storage import (
     bounty_amount_limit_resources,
     bounty_deadline_limit,
     bounties,
-    bounty_count,
     dev_fees_lords,
 )
 from contracts.getters import (
@@ -32,7 +31,6 @@ from contracts.getters import (
     view_bounty_amount_limit_resources,
     view_bounty_deadline_limit,
     view_bounty,
-    view_bounty_count,
 )
 
 from contracts.setters import (
@@ -165,7 +163,6 @@ func issue_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_pt
     }
 
     // check that target realm can still have an additional bounty added to them.
-    let (count) = bounty_count.read(target_realm_id);
     let (local count_limit) = bounty_count_limit.read();
 
     // Check for valid delay and amount.
@@ -228,7 +225,7 @@ func issue_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_pt
         tempvar pedersen_ptr = pedersen_ptr;
     }
 
-    // add the bounty to the storage at current count and increment count
+    // add the bounty to the storage
     // - go over all indices
     // - check if index < MAXIMUM_BOUNTIES_PER_REALM
     // - check if the spot is open at this index (nothing or deadline passed), if so write, if not continue
@@ -280,9 +277,6 @@ func remove_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_p
         lords_address, erc1155_address, contract_address, bounty.type, bounty.owner, bounty.amount
     );
 
-    // decrement bounty counter
-    MercenaryLib.decrease_bounty_count(target_realm_id);
-
     // set the bounty to 0 in the list
     bounties.write(
         target_realm_id, index, Bounty(0, Uint256(0, 0), 0, BountyType(0, Uint256(0, 0)))
@@ -312,11 +306,6 @@ func claim_bounties{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_
     alloc_locals;
     let (caller_address) = get_caller_address();
     let (contract_address) = get_contract_address();
-    // check the target realm has bounties on it currently
-    let (count) = bounty_count.read(target_realm_id);
-    with_attr error_message("No bounties on this realm") {
-        assert is_le(count, 0) = 0;
-    }
 
     // temporarily transfer the command of the armies of the mercenary to the mercenary contract
     let (s_realm_contract_address) = Module.get_external_contract_address(

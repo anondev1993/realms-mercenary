@@ -40,9 +40,6 @@ namespace IMercenary {
     func view_bounty_deadline_limit() -> (bounty_deadline_limit: felt) {
     }
 
-    func view_bounty_count(target_realm_id: Uint256) -> (bounty_count: felt) {
-    }
-
     //
     // Setters
     //

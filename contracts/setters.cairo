@@ -17,7 +17,6 @@ from contracts.storage import (
     bounty_amount_limit_resources,
     bounty_deadline_limit,
     bounties,
-    bounty_count,
 )
 
 // @notice Sets the percentage of developer fees

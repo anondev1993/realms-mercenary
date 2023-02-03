@@ -13,7 +13,6 @@ from contracts.storage import (
     bounty_amount_limit_resources,
     bounty_deadline_limit,
     bounties,
-    bounty_count,
 )
 
 @view
@@ -61,12 +60,4 @@ func view_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr
 ) -> (bounty: Bounty) {
     let (bounty) = bounties.read(target_realm_id, index);
     return (bounty=bounty);
-}
-
-@view
-func view_bounty_count{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
-    target_realm_id: Uint256
-) -> (bounty_count: felt) {
-    let (bounty_count_) = bounty_count.read(target_realm_id);
-    return (bounty_count=bounty_count_);
 }
