@@ -24,10 +24,6 @@ func developer_fees_percentage() -> (fees: felt) {
 }
 
 @storage_var
-func cleaner_fees_percentage() -> (fees: felt) {
-}
-
-@storage_var
 func bounty_count_limit() -> (limit: felt) {
 }
 

@@ -15,7 +15,6 @@ from realms_contracts_git.contracts.settling_game.utils.game_structs import Exte
 const BOUNTY_COUNT_LIMIT = 5;
 const BOUNTY_DEADLINE_LIMIT = 6;
 const DEV_FEES_PERCENTAGE = 7;
-const CLEANER_FEES_PERCENTAGE = 8;
 const MODULE_CONTROLLER = 9;
 const LORDS_DEV_FEES = 11 * 10 ** 18;
 const RESOURCES_DEV_FEES_TOKEN1 = 4 * 10 ** 18;
@@ -42,11 +41,10 @@ func __setup__{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
                         [mercenary_class_hash,
                         # initializer
                         0x2dd76e7ad84dbed81c314ffe5e7a7cacfb8f4836f01af4e913f275f89a3de1a,
-                        9 + len(lords_limit_amount) + len(resources_amount_array) + len(token_ids),
+                        8 + len(lords_limit_amount) + len(resources_amount_array) + len(token_ids),
                         ids.self_address, 
                         ids.self_address, 
                         ids.MODULE_CONTROLLER,
-                        ids.CLEANER_FEES_PERCENTAGE, 
                         ids.DEV_FEES_PERCENTAGE, 
                         ids.BOUNTY_COUNT_LIMIT,
                         *lords_limit_amount, 
@@ -58,16 +56,6 @@ func __setup__{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
         context.proxy_address = ids.proxy_address
     %}
     // get storage values with view functions and assert
-    // call view_cleaner_fees_percentage
-    let (call_data: felt*) = alloc();
-    let (_, cleaner_fees_perc) = call_contract(
-        contract_address=proxy_address,
-        function_selector=0x302066960f7dd70906d4c7028e22d1f5a5484876d0bce81f50bca6c2264fcd3,
-        calldata_size=0,
-        calldata=call_data,
-    );
-    assert cleaner_fees_perc[0] = CLEANER_FEES_PERCENTAGE;
-
     // call view_developer_fees_percentage
     let (call_data: felt*) = alloc();
     let (_, dev_fees_perc) = call_contract(
@@ -182,7 +170,6 @@ func test_setters{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_pt
 
     local proxy_address;
 
-    const NEW_CLEANER_FEES = 900;
     const NEW_DEV_FEES = 1000;
     const NEW_BOUNTY_COUNT_LIMIT = 1100;
     const NEW_AMOUNT_LIMIT_LORDS = 1200;
@@ -192,17 +179,6 @@ func test_setters{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_pt
     %{ ids.proxy_address = context.proxy_address %}
 
     // test setters
-
-    // set_cleaner_fees_percentage
-    let (call_data: felt*) = alloc();
-    assert call_data[0] = NEW_CLEANER_FEES;
-    call_contract(
-        contract_address=proxy_address,
-        function_selector=0x1e828979d2cecd4341475de8aee4e05bfbf95b70ece675101dc124b65cc3b67,
-        calldata_size=1,
-        calldata=call_data,
-    );
-
     // set_developer_fees_percentage
     let (call_data: felt*) = alloc();
     assert call_data[0] = NEW_DEV_FEES;
@@ -257,8 +233,6 @@ func test_setters{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_pt
 
     // verify storage changed
     %{
-        cleaner_fees_perc = load(context.proxy_address, "cleaner_fees_percentage", "felt")[0]
-        assert cleaner_fees_perc == ids.NEW_CLEANER_FEES, f'is {cleaner_fees_perc}, should be {ids.NEW_CLEANER_FEES}'
         dev_fees_perc = load(context.proxy_address, "developer_fees_percentage", "felt")[0]
         assert dev_fees_perc == ids.NEW_DEV_FEES, f'is {dev_fees_perc}, should be {ids.NEW_DEV_FEES}'
         bounty_count_limit = load(context.proxy_address, "bounty_count_limit", "felt")[0]

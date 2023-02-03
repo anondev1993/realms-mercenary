@@ -11,14 +11,12 @@ from cairo_contracts_git.src.openzeppelin.access.ownable.library import Ownable
 from contracts.structures import Bounty
 from contracts.constants import FEES_PRECISION
 from contracts.storage import (
-    cleaner_fees_percentage,
     developer_fees_percentage,
     bounty_count_limit,
     bounty_amount_limit_lords,
     bounty_amount_limit_resources,
     bounty_deadline_limit,
     bounties,
-    bounty_count,
 )
 
 // @notice Sets the percentage of developer fees
@@ -38,28 +36,11 @@ func set_developer_fees_percentage{syscall_ptr: felt*, pedersen_ptr: HashBuiltin
     return ();
 }
 
-// @notice Sets the percentage of cleaner fees
-// @dev The fees percentage is limited to 10_000 (fee precision)
-// @param Fees percentage
-@external
-func set_cleaner_fees_percentage{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
-    cleaner_fees_percentage_: felt
-) -> () {
-    Ownable.assert_only_owner();
-
-    with_attr error_message("Cleaner fees too high") {
-        assert_nn_le(cleaner_fees_percentage_, FEES_PRECISION);
-    }
-
-    cleaner_fees_percentage.write(cleaner_fees_percentage_);
-    return ();
-}
-
 // @dev If you set the bounty count limit to a number smaller than the highest index
-// @dev of a bounty on a target realm, then that bounty will never be claimable or cleanable.
+// @dev of a bounty on a target realm, then that bounty will never be claimable
 // @dev but the owner will always be able to remove it and issue it again if he wants to.
 // @dev Setting the bounty_count_limit to 0 actually allows us to pause the contract because
-// @dev there are no more issuing, claiming and cleaning possible.
+// @dev there are no more issuing and claiming.
 @external
 func set_bounty_count_limit{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
     bounty_count_limit_: felt

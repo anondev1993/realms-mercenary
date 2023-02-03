@@ -79,7 +79,6 @@ A bounty is composed of:
 | issue_bounty   | target_realm_id, bounty                                                   | Adds a bounty on a target Realm and transfers the amount from the player to the mercenary contract                                                                                                                                                                                                            |
 | remove_bounty  | index, target_realm_id                                                    | Removes a bounty, needs the index of the bounty and the target Realm id                                                                                                                                                                                                                                       |
 | claim_bounties | target_realm_id, attacking_realm_id, attacking_army_id, defending_army_id | Attacks another realm through the mercenary contract. To do that the attacker’s Realm is first transferred to the mercenary contract, which then initiates a combat with the target Realm and finally transfers back the NFT to the attacker in addition to the pillaged resources and claimed bounty amounts |
-| clean_bounties | target_realm_id                                                           | Allows anyone to clean out the expired bounties on a target realm and keep a percentage of each expired bounty to pay back for the used gas. The cleaner_fees_percentage is defined by the owner of the contract.                                                                                             |
 
 ## Sequence Diagrams 📜
 
@@ -165,4 +164,3 @@ protostar test
 | claim_bounties    | ✅                  |
 | remove_bounty     | ✅                  |
 | transfer_dev_fees | ✅                  |
-| clean_bounties    | ✅                  |
