@@ -1,6 +1,12 @@
 %lang starknet
-from starkware.cairo.common.cairo_builtins import HashBuiltin
-from starkware.cairo.common.math import split_felt, assert_not_zero
+from starkware.cairo.common.cairo_builtins import HashBuiltin, BitwiseBuiltin
+from starkware.cairo.common.math import (
+    split_felt,
+    assert_not_zero,
+    unsigned_div_rem,
+    assert_le_felt,
+)
+from starkware.cairo.common.bitwise import bitwise_and
 from starkware.cairo.common.math_cmp import is_le, is_not_zero
 from starkware.starknet.common.syscalls import (
     get_caller_address,
@@ -14,11 +20,12 @@ from starkware.cairo.common.uint256 import (
     uint256_mul,
     uint256_unsigned_div_rem,
     uint256_sub,
+    assert_uint256_le,
 )
 from starkware.cairo.common.alloc import alloc
 
 // Mercenary
-from contracts.structures import Bounty, BountyType
+from contracts.structures import Bounty, BountyType, PackedBounty
 from contracts.events import BountiesClaimed
 from contracts.storage import (
     developer_fees_percentage,
@@ -28,7 +35,12 @@ from contracts.storage import (
     dev_fees_lords,
     dev_fees_resources,
 )
-from contracts.constants import FEES_PRECISION
+from contracts.constants import (
+    FEES_PRECISION,
+    SHIFT_PACKED_BOUNTY,
+    MASK_PACKED_BOUNTY,
+    UPPER_BOUNDS_PACKED_BOUNTY,
+)
 
 // Openzeppelin
 from cairo_contracts_git.src.openzeppelin.token.erc20.IERC20 import IERC20
@@ -43,6 +55,91 @@ from realms_contracts_git.contracts.settling_game.utils.game_structs import (
 from realms_contracts_git.contracts.settling_game.library.library_module import Module
 
 namespace MercenaryLib {
+    // @notice Creates a felt containing all the info about the bounty
+    // @param bounty A bounty
+    // @return packed_bounty A bounty packed as a 2 felt structure
+    func pack_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
+        bounty: Bounty
+    ) -> (packed_bounty: PackedBounty) {
+        alloc_locals;
+        // resource id
+        with_attr error_message("Bounty resource Id is too big for packing") {
+            let (max_resource_id) = felt_to_uint256(UPPER_BOUNDS_PACKED_BOUNTY._RESOURCE_ID);
+            assert_uint256_le(bounty.type.resource_id, max_resource_id);
+        }
+        // can safely convert to felt because we have already checked for upper bound
+        let (resource_id_felt) = uint256_to_felt(bounty.type.resource_id);
+        let packed_resource_id = SHIFT_PACKED_BOUNTY._RESOURCE_ID * resource_id_felt;
+
+        // is_lords
+        let packed_is_lords = SHIFT_PACKED_BOUNTY._IS_LORDS * bounty.type.is_lords;
+
+        // bounty deadline
+        with_attr error_message("Bounty deadline is too big for packing") {
+            assert_le_felt(bounty.deadline, UPPER_BOUNDS_PACKED_BOUNTY._DEADLINE);
+        }
+        let packed_deadline = SHIFT_PACKED_BOUNTY._DEADLINE * bounty.deadline;
+
+        // bounty amount
+        with_attr error_message("Bounty amount is too big for packing") {
+            let (max_bounty_amount) = felt_to_uint256(UPPER_BOUNDS_PACKED_BOUNTY._AMOUNT);
+            assert_uint256_le(bounty.amount, max_bounty_amount);
+        }
+        // can safely convert to felt because we have already checked for upper bound
+        let (amount_felt) = uint256_to_felt(bounty.amount);
+        let packed_amount = SHIFT_PACKED_BOUNTY._AMOUNT * amount_felt;
+
+        // put all together
+        let packed_bounty_info = packed_resource_id + packed_is_lords + packed_deadline +
+            packed_amount;
+        let packed_bounty = PackedBounty(owner=bounty.owner, packed_bounty_info=packed_bounty_info);
+
+        return (packed_bounty=packed_bounty);
+    }
+
+    // @notice From a packed bounty retrieves the bounty information
+    // @param packed_bounty A struc containing the owner and the bounty info packed in a felt
+    // @return bounty A bounty struct
+    func unpack_bounty{
+        syscall_ptr: felt*,
+        pedersen_ptr: HashBuiltin*,
+        range_check_ptr,
+        bitwise_ptr: BitwiseBuiltin*,
+    }(packed_bounty: PackedBounty) -> (bounty: Bounty) {
+        alloc_locals;
+        // Shift element right by dividing by the order of the mask.
+        // resource id
+        let (masked) = bitwise_and(
+            MASK_PACKED_BOUNTY._RESOURCE_ID, packed_bounty.packed_bounty_info
+        );
+        let (unpacked_resource_id_felt, _) = unsigned_div_rem(
+            masked, SHIFT_PACKED_BOUNTY._RESOURCE_ID
+        );
+        let (unpacked_resource_id_uint) = felt_to_uint256(unpacked_resource_id_felt);
+
+        // is_lords
+        let (masked) = bitwise_and(MASK_PACKED_BOUNTY._IS_LORDS, packed_bounty.packed_bounty_info);
+        let (unpacked_is_lords, _) = unsigned_div_rem(masked, SHIFT_PACKED_BOUNTY._IS_LORDS);
+
+        // deadline
+        let (masked) = bitwise_and(MASK_PACKED_BOUNTY._DEADLINE, packed_bounty.packed_bounty_info);
+        let (unpacked_deadline, _) = unsigned_div_rem(masked, SHIFT_PACKED_BOUNTY._DEADLINE);
+
+        // amount
+        let (masked) = bitwise_and(MASK_PACKED_BOUNTY._AMOUNT, packed_bounty.packed_bounty_info);
+        let (unpacked_amount_felt, _) = unsigned_div_rem(masked, SHIFT_PACKED_BOUNTY._AMOUNT);
+        let (unpacked_amount_uint) = felt_to_uint256(unpacked_amount_felt);
+
+        let bounty = Bounty(
+            owner=packed_bounty.owner,
+            amount=unpacked_amount_uint,
+            deadline=unpacked_deadline,
+            type=BountyType(is_lords=unpacked_is_lords, resource_id=unpacked_resource_id_uint),
+        );
+
+        return (bounty=bounty);
+    }
+
     // @notice Sets bounty_amount_limit_resources storage var of token_ids(Uint256) -> amounts(Uint256)
     // @param amounts_len Length of the amounts array
     // @param amounts Amount for each resource token id
@@ -67,7 +164,7 @@ namespace MercenaryLib {
     }
 
     // @notice Adds a bounty to the storage
-    // @param new_bounty The new bounty
+    // @param new_bounty_packed The new bounty as a PackedBounty
     // @param target_realm_id The target realm id
     // @param bounty_count_limit The max number of bounties on one realm at a time
     // @param current_block The current block
@@ -76,8 +173,13 @@ namespace MercenaryLib {
     // @param contract_address The address of the mercenary contract
     // @param index The index for recursion
     // @return index The index of the new bounty
-    func _add_bounty_to_storage{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
-        new_bounty: Bounty,
+    func _add_bounty_to_storage{
+        syscall_ptr: felt*,
+        pedersen_ptr: HashBuiltin*,
+        range_check_ptr,
+        bitwise_ptr: BitwiseBuiltin*,
+    }(
+        new_bounty_packed: PackedBounty,
         target_realm_id: Uint256,
         bounty_count_limit: felt,
         current_block: felt,
@@ -91,11 +193,12 @@ namespace MercenaryLib {
             assert is_le(index, bounty_count_limit - 1) = 1;
         }
 
-        let (current_bounty) = bounties.read(target_realm_id, index);
+        let (current_bounty_packed) = bounties.read(target_realm_id, index);
+        let (current_bounty) = unpack_bounty(current_bounty_packed);
 
         // if no bounty there or if the bounty's deadline is passed, put bounty there
         if (current_bounty.owner == 0) {
-            bounties.write(target_realm_id, index, new_bounty);
+            bounties.write(target_realm_id, index, new_bounty_packed);
             return (index=index);
         }
 
@@ -108,13 +211,12 @@ namespace MercenaryLib {
                 current_bounty.owner,
                 current_bounty.amount,
             );
-            // dont increase count here because we replace an existing bounty
-            bounties.write(target_realm_id, index, new_bounty);
+            bounties.write(target_realm_id, index, new_bounty_packed);
             return (index=index);
         }
 
         return _add_bounty_to_storage(
-            new_bounty,
+            new_bounty_packed,
             target_realm_id,
             bounty_count_limit,
             current_block,
@@ -252,9 +354,12 @@ namespace MercenaryLib {
 
     // @notice If attacker wins transfers the bounties to him (lords and resources)
     // @param target_realm_id The target realm id
-    func transfer_bounties{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
-        target_realm_id: Uint256
-    ) -> () {
+    func transfer_bounties{
+        syscall_ptr: felt*,
+        pedersen_ptr: HashBuiltin*,
+        range_check_ptr,
+        bitwise_ptr: BitwiseBuiltin*,
+    }(target_realm_id: Uint256) -> () {
         alloc_locals;
         // syscalls
         let (caller_address) = get_caller_address();
@@ -377,7 +482,12 @@ namespace MercenaryLib {
     // @param current_block The current block
     // @return sum_of_lords Returns the total sum of lords in all bounties
     // @return resources_ids_len Returns the length of the resources_ids array
-    func collect_tokens{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
+    func collect_tokens{
+        syscall_ptr: felt*,
+        pedersen_ptr: HashBuiltin*,
+        range_check_ptr,
+        bitwise_ptr: BitwiseBuiltin*,
+    }(
         resources_ids: Uint256*,
         attacker_resources_amounts: Uint256*,
         dev_resources_amounts: Uint256*,
@@ -397,7 +507,8 @@ namespace MercenaryLib {
             let sum_of_rest = Uint256(0, 0);
             return (sum_of_lords=sum_of_rest, resources_ids_len=array_index);
         }
-        let (bounty) = bounties.read(target_realm_id, index);
+        let (bounty_packed) = bounties.read(target_realm_id, index);
+        let (bounty) = unpack_bounty(bounty_packed);
 
         // if there is no owner, means that there is no bounty so continue
         local has_owner = is_not_zero(bounty.owner);
@@ -453,9 +564,7 @@ namespace MercenaryLib {
             );
             let (sum_of_rest, _) = uint256_add(sum_of_rest, bounty.amount);
             // reset bounty to 0
-            bounties.write(
-                target_realm_id, index, Bounty(0, Uint256(0, 0), 0, BountyType(0, Uint256(0, 0)))
-            );
+            bounties.write(target_realm_id, index, PackedBounty(0, 0));
             return (sum_of_lords=sum_of_rest, resources_ids_len=resources_ids_len);
         } else {
             assert resources_ids[array_index] = bounty.type.resource_id;
@@ -470,9 +579,8 @@ namespace MercenaryLib {
 
             assert attacker_resources_amounts[array_index] = attacker_fees;
             // reset bounty to 0
-            bounties.write(
-                target_realm_id, index, Bounty(0, Uint256(0, 0), 0, BountyType(0, Uint256(0, 0)))
-            );
+            bounties.write(target_realm_id, index, PackedBounty(0, 0));
+
             return collect_tokens(
                 resources_ids,
                 attacker_resources_amounts,
@@ -496,6 +604,13 @@ namespace MercenaryLib {
     func felt_to_uint256{range_check_ptr}(x: felt) -> (uint_x: Uint256) {
         let (high, low) = split_felt(x);
         return (Uint256(low=low, high=high),);
+    }
+
+    func uint256_to_felt{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
+        value: Uint256
+    ) -> (res: felt) {
+        let res = value.low + value.high * (2 ** 128);
+        return (res=res);
     }
 
     // @notice Divide the bounty amount between the attacker and the fees

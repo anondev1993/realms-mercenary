@@ -1,7 +1,7 @@
 %lang starknet
 
 // starkware
-from starkware.cairo.common.cairo_builtins import HashBuiltin
+from starkware.cairo.common.cairo_builtins import HashBuiltin, BitwiseBuiltin
 from starkware.starknet.common.syscalls import get_contract_address
 from starkware.cairo.common.uint256 import Uint256
 
@@ -22,6 +22,16 @@ func __setup__{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
     alloc_locals;
     local account1;
     let (self_address) = get_contract_address();
+
+    %{
+        # import the unpack, pack functions
+        import sys
+        sys.path.insert(0,'tests')
+        from utils import pack_bounty_info, unpack_bounty_info
+        context.pack_bounty_info = pack_bounty_info
+        context.unpack_bounty_info = unpack_bounty_info
+    %}
+
     %{
         ## deploy user accounts
         ## TODO: warning from __validate__deploy
@@ -48,20 +58,20 @@ func __setup__{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
             if (i <= 9):
                 # 10 times
                 # lords bounties
-                store(context.self_address, "bounties", [ids.account1, ids.BOUNTY_AMOUNT, 0, 500, 1, 0, 0], [ids.TARGET_REALM_ID, 0, i])
+                store(context.self_address, "bounties", [ids.account1, context.pack_bounty_info(ids.BOUNTY_AMOUNT, 500, 1, 0)], [ids.TARGET_REALM_ID, 0, i])
             if (i >= 10 and i < 40):
                 # 30 resource bounties
-                store(context.self_address, "bounties", [ids.account1, ids.BOUNTY_AMOUNT, 0, 1000, 0, 1, 0], [ids.TARGET_REALM_ID, 0, i])
+                store(context.self_address, "bounties", [ids.account1, context.pack_bounty_info(ids.BOUNTY_AMOUNT, 1000, 0, 1)], [ids.TARGET_REALM_ID, 0, i])
             if (i>=40):
                 # 10 times
                 # resource bounties
-                store(context.self_address, "bounties", [ids.account1, ids.BOUNTY_AMOUNT, 0, 1000, 0, 2, 0], [ids.TARGET_REALM_ID, 0, i])
+                store(context.self_address, "bounties", [ids.account1, context.pack_bounty_info(ids.BOUNTY_AMOUNT, 1000, 0, 2)], [ids.TARGET_REALM_ID, 0, i])
 
         # verify that the bounty at index 0 and index 12is correct
-        bounty = load(context.self_address, "bounties", "Bounty", [ids.TARGET_REALM_ID, 0, 1])
-        assert bounty == [ids.account1, ids.BOUNTY_AMOUNT, 0, 500, 1, 0, 0]
-        bounty = load(context.self_address, "bounties", "Bounty", [ids.TARGET_REALM_ID, 0, 12])
-        assert bounty == [ids.account1, ids.BOUNTY_AMOUNT, 0, 1000, 0, 1, 0]
+        bounty = load(context.self_address, "bounties", "PackedBounty", [ids.TARGET_REALM_ID, 0, 1])
+        assert bounty == [ids.account1, context.pack_bounty_info(ids.BOUNTY_AMOUNT, 500, 1, 0)]
+        bounty = load(context.self_address, "bounties", "PackedBounty", [ids.TARGET_REALM_ID, 0, 12])
+        assert bounty == [ids.account1, context.pack_bounty_info(ids.BOUNTY_AMOUNT, 1000, 0, 1)]
 
         # put some erc1155 and erc20 tokens in bounty contract (this contract)
         # resources
@@ -79,20 +89,23 @@ func __setup__{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
 }
 
 @external
-func test_remove_lords_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
-    ) -> () {
+func test_remove_lords_bounty{
+    syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr, bitwise_ptr: BitwiseBuiltin*
+}() -> () {
     alloc_locals;
     %{
         # get the bounty before removing it 
-        old_bounty = load(context.self_address, "bounties", "Bounty", [ids.TARGET_REALM_ID, 0, 1])
+        old_bounty_packed = load(context.self_address, "bounties", "Bounty", [ids.TARGET_REALM_ID, 0, 1])
+        owner = old_bounty_packed[0]
+        resource_id, is_lords, deadline, amount = context.unpack_bounty_info(old_bounty_packed[1])
         stop_prank_callable = start_prank(caller_address=context.account1, target_contract_address=context.self_address)
     %}
     remove_bounty(1, Uint256(TARGET_REALM_ID, 0));
     %{ stop_prank_callable() %}
     %{
         # verify that the bounty is removed after claim
-        new_bounty = load(context.self_address, "bounties", "Bounty", [ids.TARGET_REALM_ID, 0, 1])
-        assert new_bounty == [0, 0, 0, 0, 0, 0, 0]
+        new_bounty = load(context.self_address, "bounties", "PackedBounty", [ids.TARGET_REALM_ID, 0, 1])
+        assert new_bounty == [0, 0]
 
         lords_amount = load(context.lords_contract, "ERC20_balances", "Uint256", [context.account1])
         assert lords_amount[0] == ids.BOUNTY_AMOUNT, f'lords amount of person who removed bounty should be {ids.BOUNTY_AMOUNT} but is {lords_amount[0]}'
@@ -100,7 +113,7 @@ func test_remove_lords_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, ra
 
     %{
         # verify event
-        event = old_bounty + [ids.TARGET_REALM_ID, 0, 1] 
+        event = [owner, amount, 0, deadline, is_lords, resource_id, 0] + [ids.TARGET_REALM_ID, 0, 1] 
         expect_events(
         {"name": "BountyRemoved", 
         "data": event}
@@ -111,12 +124,15 @@ func test_remove_lords_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, ra
 }
 
 @external
-func test_remove_resources_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
-    ) -> () {
+func test_remove_resources_bounty{
+    syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr, bitwise_ptr: BitwiseBuiltin*
+}() -> () {
     alloc_locals;
     %{
         # get the bounty before removing it 
-        old_bounty = load(context.self_address, "bounties", "Bounty", [ids.TARGET_REALM_ID, 0, 12])
+        old_bounty_packed = load(context.self_address, "bounties", "PackedBounty", [ids.TARGET_REALM_ID, 0, 12])
+        owner = old_bounty_packed[0]
+        resource_id, is_lords, deadline, amount = context.unpack_bounty_info(old_bounty_packed[1])
         stop_prank_callable = start_prank(caller_address=context.account1, target_contract_address=context.self_address)
     %}
     // remove the bounty at index 12
@@ -134,7 +150,7 @@ func test_remove_resources_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*
 
     %{
         # verify event
-        event = old_bounty + [ids.TARGET_REALM_ID, 0, 12] 
+        event = [owner, amount, 0, deadline, is_lords, resource_id, 0] + [ids.TARGET_REALM_ID, 0, 12] 
         expect_events(
         {"name": "BountyRemoved", 
         "data": event}

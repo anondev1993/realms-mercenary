@@ -2,13 +2,13 @@
 
 // starkware
 from starkware.cairo.common.uint256 import Uint256
-from starkware.cairo.common.cairo_builtins import HashBuiltin
+from starkware.cairo.common.cairo_builtins import HashBuiltin, BitwiseBuiltin
 from starkware.starknet.common.syscalls import get_contract_address
 
 // mercenary
 from contracts.mercenary import onERC1155BatchReceived, claim_bounties
 from contracts.storage import supportsInterface
-from contracts.structures import Bounty
+from contracts.structures import Bounty, BountyType, PackedBounty
 
 // realms
 from realms_contracts_git.contracts.settling_game.utils.game_structs import (
@@ -56,6 +56,15 @@ func __setup__{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
     local combat_contract;
     local account1;
     local account2;
+
+    %{
+        # import the unpack, pack functions
+        import sys
+        sys.path.insert(0,'tests')
+        from utils import pack_bounty_info, unpack_bounty_info
+        context.pack_bounty_info = pack_bounty_info
+        context.unpack_bounty_info = unpack_bounty_info
+    %}
 
     %{
         context.self_address = ids.address
@@ -158,7 +167,7 @@ func __setup__{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
 // check the difference in resources balance between before and after combat
 @external
 func test_claim_without_bounties_should_revert{
-    syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr
+    syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr, bitwise_ptr: BitwiseBuiltin*
 }() -> () {
     // claim bounty
     %{
@@ -176,8 +185,9 @@ func test_claim_without_bounties_should_revert{
 }
 
 @external
-func test_claim_with_bounties{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
-    ) -> () {
+func test_claim_with_bounties{
+    syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr, bitwise_ptr: BitwiseBuiltin*
+}() -> () {
     // setup bounties in mercenary contract
     alloc_locals;
     local self_address;
@@ -187,18 +197,18 @@ func test_claim_with_bounties{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, ra
             if (i <= 9):
                 # 10 times
                 # lords bounties
-                store(context.self_address, "bounties", [1, ids.BOUNTY_AMOUNT, 0, 500, 1, 0, 0], [ids.TARGET_REALM_ID, 0, i])
+                store(context.self_address, "bounties", [1, context.pack_bounty_info(ids.BOUNTY_AMOUNT, 500, 1, 0)], [ids.TARGET_REALM_ID, 0, i])
             if (i >= 10 and i < 40):
                 # 30 resource bounties
-                store(context.self_address, "bounties", [1, ids.BOUNTY_AMOUNT, 0, 1000, 0, 1, 0], [ids.TARGET_REALM_ID, 0, i])
+                store(context.self_address, "bounties", [1, context.pack_bounty_info(ids.BOUNTY_AMOUNT, 1000, 0, 1)], [ids.TARGET_REALM_ID, 0, i])
             if (i>=40):
                 # 10 times
                 # resource bounties
-                store(context.self_address, "bounties", [1, ids.BOUNTY_AMOUNT, 0, 1000, 0, 2, 0], [ids.TARGET_REALM_ID, 0, i])
+                store(context.self_address, "bounties", [1, context.pack_bounty_info(ids.BOUNTY_AMOUNT, 1000, 0, 2)], [ids.TARGET_REALM_ID, 0, i])
 
         # verify that the bounty is correct
-        bounty = load(context.self_address, "bounties", "Bounty", [ids.TARGET_REALM_ID, 0, 12])
-        assert bounty == [1, ids.BOUNTY_AMOUNT, 0, 1000, 0, 1, 0]
+        bounty = load(context.self_address, "bounties", "PackedBounty", [ids.TARGET_REALM_ID, 0, 12])
+        assert bounty == [1, context.pack_bounty_info(ids.BOUNTY_AMOUNT, 1000, 0, 1)]
     %}
 
     %{ stop_prank_callable = start_prank(context.account1, context.self_address) %}
@@ -214,8 +224,8 @@ func test_claim_with_bounties{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, ra
     %{
         # verify that the bounty is removed after claim
         for i in range(0, ids.BOUNTY_COUNT_LIMIT):        
-            bounty = load(context.self_address, "bounties", "Bounty", [ids.TARGET_REALM_ID, 0, i])
-            assert bounty == [0, 0, 0, 0, 0, 0, 0], f'bounty is {bounty}'
+            bounty = load(context.self_address, "bounties", "PackedBounty", [ids.TARGET_REALM_ID, 0, i])
+            assert bounty == [0, 0], f'bounty is {bounty}'
     %}
 
     // verify value transfers
@@ -300,7 +310,7 @@ func test_claim_with_bounties{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, ra
 
 @external
 func test_claim_with_expired_bounties_should_revert{
-    syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr
+    syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr, bitwise_ptr: BitwiseBuiltin*
 }() -> () {
     // setup bounties in mercenary contract
     alloc_locals;
@@ -311,18 +321,18 @@ func test_claim_with_expired_bounties_should_revert{
             if (i <= 9):
                 # 10 times
                 # lords bounties
-                store(context.self_address, "bounties", [context.account2, ids.BOUNTY_AMOUNT, 0, 500, 1, 0, 0], [ids.TARGET_REALM_ID, 0, i])
+                store(context.self_address, "bounties", [context.account2, context.pack_bounty_info(ids.BOUNTY_AMOUNT, 500, 1, 0)], [ids.TARGET_REALM_ID, 0, i])
             if (i >= 10 and i < 40):
                 # 30 resource bounties
-                store(context.self_address, "bounties", [context.account2, ids.BOUNTY_AMOUNT, 0, 1000, 0, 1, 0], [ids.TARGET_REALM_ID, 0, i])
+                store(context.self_address, "bounties", [context.account2, context.pack_bounty_info(ids.BOUNTY_AMOUNT, 1000, 0, 1)], [ids.TARGET_REALM_ID, 0, i])
             if (i>=40):
                 # 10 times
                 # resource bounties
-                store(context.self_address, "bounties", [context.account2, ids.BOUNTY_AMOUNT, 0, 1000, 0, 2, 0], [ids.TARGET_REALM_ID, 0, i])
+                store(context.self_address, "bounties", [context.account2, context.pack_bounty_info(ids.BOUNTY_AMOUNT, 1000, 0, 2)], [ids.TARGET_REALM_ID, 0, i])
 
         # verify that the bounty is correct
-        bounty = load(context.self_address, "bounties", "Bounty", [ids.TARGET_REALM_ID, 0, 12])
-        assert bounty == [context.account2, ids.BOUNTY_AMOUNT, 0, 1000, 0, 1, 0]
+        bounty = load(context.self_address, "bounties", "PackedBounty", [ids.TARGET_REALM_ID, 0, 12])
+        assert bounty == [context.account2, context.pack_bounty_info(ids.BOUNTY_AMOUNT, 1000, 0, 1)]
     %}
 
     // go into the future to make all bounties expired

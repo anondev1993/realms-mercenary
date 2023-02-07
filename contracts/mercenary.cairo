@@ -1,8 +1,8 @@
 %lang starknet
 // Starkware
-from starkware.cairo.common.cairo_builtins import HashBuiltin
+from starkware.cairo.common.cairo_builtins import HashBuiltin, BitwiseBuiltin
 from starkware.cairo.common.math_cmp import is_le
-from starkware.cairo.common.math import assert_le_felt, assert_not_zero
+from starkware.cairo.common.math import assert_le_felt, assert_not_zero, assert_nn_le
 from starkware.starknet.common.syscalls import (
     get_caller_address,
     get_contract_address,
@@ -12,7 +12,7 @@ from starkware.cairo.common.uint256 import Uint256, assert_uint256_le, uint256_l
 from starkware.cairo.common.alloc import alloc
 
 // Mercenary
-from contracts.structures import Bounty, BountyType
+from contracts.structures import Bounty, BountyType, PackedBounty
 from contracts.events import BountyIssued, DevFeesTransferred, BountyRemoved
 from contracts.library import MercenaryLib
 from contracts.storage import (
@@ -143,9 +143,9 @@ func upgrade{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
 // @param bounty The bounty to be issued
 // @return index The index of the new bounty
 @external
-func issue_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
-    target_realm_id: Uint256, bounty: Bounty
-) -> (index: felt) {
+func issue_bounty{
+    syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr, bitwise_ptr: BitwiseBuiltin*
+}(target_realm_id: Uint256, bounty: Bounty) -> (index: felt) {
     alloc_locals;
     // check that the owner of the bounty is the caller
     // DISCUSS: This is a double check to make sure that the bounty being placed is the right one
@@ -169,6 +169,11 @@ func issue_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_pt
     // verify that amount is bigger than 0
     with_attr error_message("Bounty amount negative or null") {
         assert_uint256_le(Uint256(0, 0), bounty.amount);
+    }
+
+    // Check that is_lords is 0 or 1
+    with_attr error_message("Bounty is_lords must be either 0 or 1") {
+        assert_nn_le(bounty.type.is_lords, 1);
     }
 
     // deadline_limit is an interval of blocks
@@ -225,12 +230,14 @@ func issue_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_pt
         tempvar pedersen_ptr = pedersen_ptr;
     }
 
+    // pack the bounty to store it
+    let (bounty_packed) = MercenaryLib.pack_bounty(bounty);
     // add the bounty to the storage
     // - go over all indices
     // - check if index < MAXIMUM_BOUNTIES_PER_REALM
     // - check if the spot is open at this index (nothing or deadline passed), if so write, if not continue
     let (index) = MercenaryLib._add_bounty_to_storage(
-        bounty,
+        bounty_packed,
         target_realm_id,
         count_limit,
         current_block,
@@ -250,9 +257,9 @@ func issue_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_pt
 // @param index Index of the bounty
 // @param target_realm_id Id of the target realm
 @external
-func remove_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
-    index: felt, target_realm_id: Uint256
-) -> () {
+func remove_bounty{
+    syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr, bitwise_ptr: BitwiseBuiltin*
+}(index: felt, target_realm_id: Uint256) -> () {
     alloc_locals;
     let (caller_address) = get_caller_address();
     let (contract_address) = get_contract_address();
@@ -260,7 +267,8 @@ func remove_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_p
     let (erc1155_address) = Module.get_external_contract_address(ExternalContractIds.Resources);
     let (lords_address) = Module.get_external_contract_address(ExternalContractIds.Lords);
 
-    let (bounty) = bounties.read(target_realm_id, index);
+    let (bounty_packed) = bounties.read(target_realm_id, index);
+    let (bounty) = MercenaryLib.unpack_bounty(bounty_packed);
 
     // assert that there is a bounty at that location
     with_attr error_message("No bounty on that index") {
@@ -278,9 +286,7 @@ func remove_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_p
     );
 
     // set the bounty to 0 in the list
-    bounties.write(
-        target_realm_id, index, Bounty(0, Uint256(0, 0), 0, BountyType(0, Uint256(0, 0)))
-    );
+    bounties.write(target_realm_id, index, PackedBounty(0, 0));
 
     // emit event
     BountyRemoved.emit(bounty=bounty, target_realm_id=target_realm_id, index=index);
@@ -297,7 +303,9 @@ func remove_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_p
 // @param attacking_army_id The id of the attacking army
 // @param defending_army_id The id of the defending army
 @external
-func claim_bounties{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
+func claim_bounties{
+    syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr, bitwise_ptr: BitwiseBuiltin*
+}(
     target_realm_id: Uint256,
     attacking_realm_id: Uint256,
     attacking_army_id: felt,
@@ -364,10 +372,12 @@ func claim_bounties{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_
         tempvar syscall_ptr = syscall_ptr;
         tempvar pedersen_ptr = pedersen_ptr;
         tempvar range_check_ptr = range_check_ptr;
+        tempvar bitwise_ptr = bitwise_ptr;
     } else {
         tempvar syscall_ptr = syscall_ptr;
         tempvar pedersen_ptr = pedersen_ptr;
         tempvar range_check_ptr = range_check_ptr;
+        tempvar bitwise_ptr = bitwise_ptr;
     }
 
     IERC721.transferFrom(

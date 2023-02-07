@@ -4,7 +4,7 @@ from starkware.cairo.common.uint256 import Uint256
 from starkware.cairo.common.cairo_builtins import HashBuiltin
 from starkware.cairo.common.bool import TRUE, FALSE
 
-from contracts.structures import Bounty
+from contracts.structures import PackedBounty
 from contracts.constants import IERC1155_RECEIVER_ID
 
 // -----------------------------------
@@ -40,7 +40,7 @@ func bounty_deadline_limit() -> (limit: felt) {
 }
 
 @storage_var
-func bounties(realm_id: Uint256, index: felt) -> (bounty: Bounty) {
+func bounties(realm_id: Uint256, index: felt) -> (packed_bounty: PackedBounty) {
 }
 
 @storage_var

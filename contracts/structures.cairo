@@ -19,3 +19,8 @@ struct Bounty {
     deadline: felt,
     type: BountyType,
 }
+
+struct PackedBounty {
+    owner: felt,
+    packed_bounty_info: felt,
+}
