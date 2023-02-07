@@ -1,11 +1,12 @@
 %lang starknet
 
 // starkware
-from starkware.cairo.common.cairo_builtins import HashBuiltin
+from starkware.cairo.common.cairo_builtins import HashBuiltin, BitwiseBuiltin
 from starkware.cairo.common.uint256 import Uint256
 
 // mercenary
 from contracts.structures import Bounty
+from contracts.library import MercenaryLib
 from contracts.storage import (
     developer_fees_percentage,
     bounty_count_limit,
@@ -55,9 +56,10 @@ func view_bounty_deadline_limit{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, 
 }
 
 @view
-func view_bounty{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
-    target_realm_id: Uint256, index: felt
-) -> (bounty: Bounty) {
-    let (bounty) = bounties.read(target_realm_id, index);
+func view_bounty{
+    syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr, bitwise_ptr: BitwiseBuiltin*
+}(target_realm_id: Uint256, index: felt) -> (bounty: Bounty) {
+    let (bounty_packed) = bounties.read(target_realm_id, index);
+    let (bounty) = MercenaryLib.unpack_bounty(bounty_packed);
     return (bounty=bounty);
 }
